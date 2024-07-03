@@ -1,5 +1,5 @@
-/// arch = https://github.com/commonkestrel/warp-arch
-import arch::{SCREEN_WIDTH, SCREEN_HEIGHT, draw_screen}
+/// std = https://github.com/commonkestrel/warp-std
+import std::arch::{SCREEN_WIDTH, SCREEN_HEIGHT, draw_screen}
 
 define BOX_WIDTH - 2;
 define BOX_HEIGHT - 2;
