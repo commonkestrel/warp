@@ -42,9 +42,48 @@ This means that you are unable to write to `*T`; You are instead only able to wr
 Pointers are 16 bits wide, and are able to do arithmetic with `u8`, `u16`, `i8` and `i16`.
 Pointers can be indexed just like arrays; `ptr[i]` returns `*(ptr + i*sizeof T)`, where ptr is of type `*T`.
 
+#### Tuples
+
+Tuples act similarly to Rust; They are denoted with parentheses and can contain any type.
+They allow the return of multiple values from functions.
+An empty tuple can be used to denote the unit type, and is equivalent to the `void` type.
+
 ## Constants
 
 There are 3 types on constants in Warp; These are denoted with the `const`, `static`, and `progmem` keywords.
+
 `const` works similarly to `const` in Go, or `#define` in C, where the value is just copied wherever it is used.
 You cannot mutate a constant, and cannot hold a reference of it.
-`static` is a global value stored in memory. Statics can be mutated 
+Constants do not need types.
+
+A `static` is a global value stored in memory. Statics can be mutated and references can be taken.
+
+
+`progmem` is short for "program memory", meaning that the value is stored along with the program itself.
+Since program memory constants are stored on a seperate memory chip, references cannot be taken.
+Program memory constants should be used when large amounts of data need to be dynamically referenced,
+such as arrays or strings.
+
+### When to use each type
+
+Each type of constant has its own unique use case.
+This table will help compare the pros and cons of each type:
+
+|    Type   | Location | References | Mutable | Duplicated |
+|-----------|:--------:|:----------:|:-------:|:----------:|
+| `static`  |   RAM    |     ✅     |    ✅   |      ❌    |
+| `const`   |   ROM    |     ✅     |    ✅   |      ✅    |
+| `progmem` |   ROM    |     ❌     |    ❌   |      ❌    |
+
+## Functions
+
+Functions 
+
+## Namespaces
+
+Namespaces work similarly to modules in Rust.
+Inline namespaces are created with `namespace {identifier} {}`.
+If instead of braces and your namespace contents, you place a semicolon,
+Warp will search for a namespace file in the current namespace's subfolder.
+
+## Visibility
