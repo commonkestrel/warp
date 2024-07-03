@@ -1,0 +1,56 @@
+/// arch = https://github.com/commonkestrel/warp-arch
+import arch::{SCREEN_WIDTH, SCREEN_HEIGHT, draw_screen}
+
+define BOX_WIDTH - 2;
+define BOX_HEIGHT - 2;
+progmem HELLO: u8[13] = "Hello world!"
+
+fn main(): void {
+    draw_top();
+    draw_bottom();
+    draw_left();
+    draw_right();
+    draw_hello();
+
+    return;
+}
+
+fn draw_top(): void {
+    draw_character(1, 1, '╔');
+
+    draw_bar(1);
+
+    draw_character(BOX_WIDTH, 1, '╗');
+
+    return;
+}
+
+fn draw_bottom(): void {
+    draw_character(1, BOX_HEIGHT, '╚');
+
+    draw_bar(BOX_HEIGHT);
+
+    draw_character(BOX_WIDTH, BOX_HEIGHT, '╝');
+
+    return;
+}
+
+fn draw_bar(height: u8): void {
+    for (mut i: u8 = 1; i < BOX_WIDTH-1; i += 1) {
+        draw_character(i+1, height, '═');
+    }
+
+    return;
+}
+
+fn draw_hello(): void {
+    let mut i: u8 = 0;
+
+    while (HELLO[i] != 0) {
+        draw_screen(3+i, 3, HELLO[i]);
+
+        i += 1;
+    }
+
+    return;
+}
