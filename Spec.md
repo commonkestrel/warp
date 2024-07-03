@@ -77,7 +77,10 @@ This table will help compare the pros and cons of each type:
 
 ## Functions
 
-Functions 
+Functions are a way to minimise repeated blocks of code.
+They accept parameters and can be called anywhere in your code, and will always return to the location it was called.
+Functions can return values, and must always contain a return statement.
+If the function's return type is `()` or `void`, you can return without a value.
 
 ## Namespaces
 
@@ -86,4 +89,47 @@ Inline namespaces are created with `namespace {identifier} {}`.
 If instead of braces and your namespace contents, you place a semicolon,
 Warp will search for a namespace file in the current namespace's subfolder.
 
+Namespace subfolders allow for a sense of hierarchy in the file tree.
+The project's subfolder is the project root, and all sub-namespaces' subfolders are the identifier of the namespace.
+
+For example, let's imagine a project called `main`,
+where `main.warp` contains `namespace child;`, and `child.warp` contains `namespace grandchild`.
+
+The file tree would look something like so:
+
+```
+main/
+├─ child/
+│  ├─ grandchild.warp
+├─ child.warp
+├─ main.warp
+```
+
+## Imports
+
+Packages allow items to be used in your code that you did not create or do not have locally.
+Instead of a package file, such as `Cargo.toml` or `go.mod`,
+packages are imported through comments.
+For example, Warp's standard library is imported like so:
+``` rs
+//! std = https://github.com/commonkestrel/warp-std
+```
+The Warp compiler will cache the git repository and include it as a package for your file.
+
+While by default the HEAD branch (`main`, `master`, `trunk`, etc...) and the most recent commit is used,
+you can specify these values like so:
+```rs
+//! std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 5a6bb6d)
+```
+
+You are also able to import local packages via that `path` argument:
+```rs
+//! std = path(./my-standard)
+```
+
+All of this allows projects to be completely stored within a single file.
+This significantly improves the readability and 
+
 ## Visibility
+
+
