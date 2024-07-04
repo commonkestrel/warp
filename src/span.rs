@@ -1,6 +1,6 @@
 use std::{
-    fmt::{Debug, Formatter},
     borrow,
+    fmt::{Debug, Formatter},
     ops::{self, Range},
     sync::Arc,
 };
@@ -148,27 +148,30 @@ impl Span {
             let line = self.lookup.line(lines.start).trim_end();
             let offset = (lines.start + 1).ilog10() as usize + 2;
 
-            (format!(
-                "\
+            (
+                format!(
+                    "\
                 {arrow:>arr_space$} {name}:{line_n}:{col_n}\n\
                 {cap:>width$}\n\
                 {n} {line}\n\
                 {cap:>width$} {pointer}\
                 ",
-                arrow = "-->".bright_blue().bold(),
-                name = self.source_name,
-                cap = "|".bright_blue().bold(),
-                width = offset + 1,
-                arr_space = offset + 2,
-                n = format!("{line_n:<offset$}|").bright_blue().bold(),
-                pointer = format!(
-                    "{blank:>start$}{blank:^>length$}",
-                    blank = "",
-                    start = col_n - 1,
-                    length = self.location.end - self.location.start,
-                )
-                .color(arrow_color),
-            ), offset)
+                    arrow = "-->".bright_blue().bold(),
+                    name = self.source_name,
+                    cap = "|".bright_blue().bold(),
+                    width = offset + 1,
+                    arr_space = offset + 2,
+                    n = format!("{line_n:<offset$}|").bright_blue().bold(),
+                    pointer = format!(
+                        "{blank:>start$}{blank:^>length$}",
+                        blank = "",
+                        start = col_n - 1,
+                        length = self.location.end - self.location.start,
+                    )
+                    .color(arrow_color),
+                ),
+                offset,
+            )
         }
     }
 }

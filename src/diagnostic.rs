@@ -7,7 +7,8 @@ use colored::{Color, ColoredString, Colorize};
 
 use std::sync::Arc;
 
-const BUG_MESSAGE: &str = "This is a bug. Please report it at `https://github.com/commonkestrel/warp/issues`";
+const BUG_MESSAGE: &str =
+    "This is a bug. Please report it at `https://github.com/commonkestrel/warp/issues`";
 
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
@@ -104,7 +105,10 @@ impl Diagnostic {
 
     #[inline]
     pub fn set_spanned_note<S: Into<String>>(&mut self, note: S, span: Span) {
-        self.set_note(Note{ value: note.into(), span: Some(span) });
+        self.set_note(Note {
+            value: note.into(),
+            span: Some(span),
+        });
     }
 
     #[inline]
@@ -180,9 +184,15 @@ impl Diagnostic {
         }
 
         if let Some(note) = self.note {
-            writeln!(async_std::io::stdout(), "{:>note_offset$} {}: {}", "=".bright_blue().bold(), "note".bold(), note.value)
-                .await
-                .unwrap()
+            writeln!(
+                async_std::io::stdout(),
+                "{:>note_offset$} {}: {}",
+                "=".bright_blue().bold(),
+                "note".bold(),
+                note.value
+            )
+            .await
+            .unwrap()
         }
     }
 }

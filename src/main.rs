@@ -1,6 +1,6 @@
-mod span;
-mod diagnostic;
 mod build;
+mod diagnostic;
+mod span;
 
 use clap::{Parser, Subcommand};
 
@@ -19,7 +19,7 @@ enum Command {
         input: clio::Input,
         #[arg(short, long)]
         output: clio::Output,
-    }
+    },
 }
 
 fn main() {
