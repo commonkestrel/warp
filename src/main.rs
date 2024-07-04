@@ -2,7 +2,7 @@ mod build;
 mod diagnostic;
 mod span;
 
-use std::process::ExitCode;
+use std::{path::PathBuf, process::ExitCode};
 
 use clap::{Parser, Subcommand};
 
@@ -18,18 +18,19 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     Build {
-        input: clio::Input,
+        input: PathBuf,
         #[arg(short, long)]
-        output: clio::Output,
+        output: PathBuf,
     },
 }
 
-fn main() -> ExitCode {
+#[async_std::main]
+async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     match cli.command {
         Command::Build { input, output } => {
-            build::build(input, output)
+            build::build(input, output).await
         }
     }
 }

@@ -8,7 +8,7 @@ repository = "https://github.com/commonkestrel/warp"
 exclude = ["/examples"]
 
 [dependencies]
-async-std = "1.12.0"
+async-std = { version = "1.12.0", features = ["attributes"] }
 clap = { version = "4.5.8", features = ["derive"] }
 clap-verbosity-flag = "2.2.0"
 clio = { version = "0.3.5", features = ["clap-parse"] }

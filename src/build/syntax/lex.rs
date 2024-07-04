@@ -189,7 +189,8 @@ pub enum Token {
     #[regex(r"0o[0-7][_0-7]*", Token::octal)]
     #[regex(r"-?[0-9][_0-9]*", Token::decimal)]
     #[regex(r"0x[0-9a-fA-F][_0-9a-fA-F]*", Token::hexadecimal)]
-    #[regex(r"'[\x00-\x7F]*'", Token::char)]
+    // Yes this is god awful but there are a lot of random characters in code-page 737
+    #[regex(r"'[\x00-\x7FΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρσςτυφχψ░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀ωάέήϊίόύϋώΆΈΉΊΌΎΏ±≥≤ΪΫ÷≈°∙·√ⁿ²■]*'", Token::char)]
     #[regex(r#"'\\[(\\)n"at0rbfv]'"#, Token::char)]
     #[regex(r"'\\x[[:xdigit:]]{1,2}'", Token::char)]
     Immediate(i128),
