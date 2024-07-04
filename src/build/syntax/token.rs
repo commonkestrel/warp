@@ -1,4 +1,4 @@
-use super::lex::{Delimeter, Keyword, Punctuation, Token};
+use super::lex::{Delimeter, Keyword, Macro, Punctuation, Token};
 use super::parse::{Cursor, Parsable};
 use crate::build::ascii::AsciiStr;
 use crate::build::symbol_table::SymbolRef;
@@ -198,6 +198,13 @@ parsable! {
     "keyword `continue`" : Keyword(Keyword::Continue) => Continue,
     "keyword `namespace`" : Keyword(Keyword::Namespace) => Namespace,
     "keyword `as`" : Keyword(Keyword::As) => As,
+}
+
+//-------- Macros --------//
+
+parsable! {
+    "macro `sizeof`" : Macro(Macro::Sizeof) => Sizeof,
+    "macro `asm`" : Macro(Macro::Asm) => Asm,
 }
 
 //------ Containers ------//

@@ -16,6 +16,7 @@ pub enum Statement {
     Break,
     Continue,
     Return(Spanned<Expr>),
+    Asm(Spanned<String>),
     Var {
         mutability: Mutability,
         ident: Spanned<Ident>,
@@ -61,6 +62,7 @@ pub enum Expr {
     BinaryOp(Box<BinOp>),
     UnaryOp(Spanned<UnaryOp>, Box<Spanned<Expr>>),
     As(Box<Spanned<Expr>>, Spanned<Type>),
+    Sizeof(Spanned<Type>),
     Err,
 }
 
@@ -80,7 +82,36 @@ impl Parsable for Spanned<Expr> {
 
 #[derive(Debug, Clone)]
 pub struct Path {
-    
+    start: Spanned<PathStart>,
+    segments: Vec<Spanned<Ident>>,
+}
+
+impl Parsable for Spanned<Path> {
+    fn parse(cursor: &mut super::parse::Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let peek = cursor.peek();
+
+        let start = match peek.map(Spanned::inner) {
+            Some(Token::Ident(id)) => {
+                let ident = Ident {symbol: *id};
+
+            }
+            Some(tok) => { return Err(spanned_error!(peek.unwrap().span().clone(), "expected path, found {}", tok.description())) }
+            None => { return Err(spanned_error!(cursor.eof_span(), "expected path, found `EOF`")) }
+        };
+
+        todo!()
+    }
+
+    fn description(&self) -> &'static str {
+        "path"
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum PathStart {
+    Ident(Ident),
+    Super,
+    Root,
 }
 
 #[derive(Debug, Clone)]

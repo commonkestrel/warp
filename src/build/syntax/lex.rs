@@ -119,6 +119,10 @@ pub enum Token {
     #[token("as", |_| Keyword::As)]
     Keyword(Keyword),
 
+    #[token("sizeof!", |_| Macro::Sizeof)]
+    #[token("asm!", |_| Macro::Asm)]
+    Macro(Macro),
+
     #[token("(", |_| Delimeter::OpenParen)]
     #[token(")", |_| Delimeter::CloseParen)]
     #[token("[", |_| Delimeter::OpenBracket)]
@@ -207,6 +211,7 @@ impl Token {
             TI::Ident(_) => "identifier",
             TI::Delimeter(del) => del.description(),
             TI::Keyword(key) => key.description(),
+            TI::Macro(mac) => mac.description(),
             TI::Punctuation(punc) => punc.description(),
         }
     }
@@ -336,6 +341,21 @@ impl Keyword {
             Keyword::Continue => "keyword `continue`",
             Keyword::Namespace => "keyword `namespace`",
             Keyword::As => "keyword `as`",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Macro {
+    Sizeof,
+    Asm,
+}
+
+impl Macro {
+    fn description(&self) -> &'static str {
+        match self {
+            Macro::Sizeof => "macro `sizeof`",
+            Macro::Asm => "macro `asm`",
         }
     }
 }
