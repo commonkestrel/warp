@@ -1,7 +1,49 @@
-use crate::{span::Spanned, spanned_error};
+use crate::{seek, span::Spanned, spanned_error, Token};
 
-use super::{lex::{Delimeter, Primitive, Token}, parse::Parsable};
+use super::{lex::{Delimeter, Keyword, Primitive, Punctuation, Token}, parse::Parsable, token::Ident};
 
+#[derive(Debug, Clone)]
+pub enum Statement {
+    Expr(Expr),
+    Block(Vec<Spanned<Statement>>),
+    If {
+        condition: Spanned<Expr>,
+        content: Box<Spanned<Statement>>,
+        else_block: Option<Box<Spanned<Statement>>>,
+    },
+    For(Box<ForLoop>),
+    While(Box<WhileLoop>),
+    Break,
+    Continue,
+    Return(Spanned<Expr>),
+    Var {
+        mutability: Mutability,
+        ident: Spanned<Ident>,
+        ty: Spanned<Type>,
+        assignment: Spanned<Expr>,
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ForLoop {
+    init: Spanned<Statement>,
+    check: Spanned<Statement>,
+    post: Spanned<Statement>,
+    content: Spanned<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileLoop {
+    check: Spanned<Statement>,
+    contents: Box<Spanned<Statement>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Expr {
+
+}
+
+#[derive(Debug, Clone)]
 pub enum Type {
     U8,
     U16,
@@ -17,7 +59,7 @@ pub enum Type {
     Void,
     Pointer {
         mutability: Mutability,
-        ty: Box<Type>,
+        ty: Box<Spanned<Type>>,
     },
     Tuple(Vec<Spanned<Type>>),
     Err,
@@ -42,22 +84,76 @@ impl From<&Primitive> for Type {
     }
 }
 
-impl Parsable for Type {
+impl Parsable for Spanned<Type> {
     fn parse(cursor: &mut super::parse::Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
         let peek = cursor.peek();
 
         match peek.map(|spanned| spanned.inner()) {
-            Some(Token::Primitive(p)) => Ok(p.into()),
+            Some(Token::Primitive(p)) => Ok(Spanned::new(p.into(), peek.unwrap().span().clone())),
+            Some(Token::Punctuation(Punctuation::Star)) => {
+                let start = peek.unwrap().span().clone();
+                cursor.step();
+
+                let mutability = if cursor.check(&Token::Keyword(Keyword::Mut)) {
+                    cursor.step();
+                    Mutability::Mutable
+                } else {
+                    Mutability::Immutable
+                };
+
+                let ty: Spanned<Type> = cursor.parse()?;
+                let span = start.to(ty.span());
+
+                Ok(Spanned::new(Type::Pointer {
+                    mutability,
+                    ty: Box::new(ty),
+                }, span))
+            }
             Some(Token::Delimeter(Delimeter::OpenParen)) => {
-                todo!()
+                let start = peek.unwrap().span().clone();
+
+                let mut comma = true;
+                let mut types = Vec::new();
+
+                while !cursor.check(&Token::Delimeter(Delimeter::CloseParen)) && !cursor.at_end() {
+                    if !comma {
+                        // We can unwrap here since we are already checking if the cursor has more tokens
+                        let (next_tok, next_span) = cursor.next().unwrap().deconstruct();
+
+                        cursor.reporter().report_sync(spanned_error!(next_span, "expected `,`, found {}", next_tok.description()));
+
+                        seek!(cursor, Token::Delimeter(Delimeter::CloseParen) | Token::Punctuation(Punctuation::Comma));
+                    } else {
+                        types.push(cursor.parse()?);
+                        comma = if cursor.check(&Token::Punctuation(Punctuation::Comma)) {
+                            cursor.step();
+                            true
+                        } else {
+                            false
+                        };
+                    }
+                }
+
+                let close: Spanned<Token![")"]> = match cursor.parse() {
+                    Ok(close) => close,
+                    Err(err) => {
+                        cursor.reporter().report_sync(err);
+                        return Ok(Spanned::new(Type::Err, cursor.eof_span()))
+                    }
+                };
+
+                Ok(Spanned::new(
+                    Type::Tuple(types),
+                    start.to(close.span())
+                ))
             }
             Some(tok) => {
                 cursor.reporter().report_sync(spanned_error!(peek.unwrap().span().clone(), "expected type, found {}", tok.description()));
-                Ok(Type::Err)
+                Ok(Spanned::new(Type::Err, peek.unwrap().span().clone()))
             }
             None => {
                 cursor.reporter().report_sync(spanned_error!(cursor.eof_span(), "expected type, found `EOF`"));
-                Ok(Type::Err)
+                Ok(Spanned::new(Type::Err, cursor.eof_span()))
             }
         }
     }
@@ -67,6 +163,7 @@ impl Parsable for Type {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum Mutability {
     Immutable,
     Mutable,
