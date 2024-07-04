@@ -165,3 +165,132 @@ pub trait Parsable: Sized {
     /// Used for error messages.
     fn description(&self) -> &'static str;
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Punctuated<T, S> {
+    inner: Vec<(T, S)>,
+    last: Box<Option<T>>,
+}
+
+impl<T, S> Punctuated<T, S> {
+    pub fn new(inner: Vec<(T, S)>, last: Option<T>) -> Self {
+        Punctuated {
+            inner,
+            last: Box::new(last),
+        }
+    }
+
+    pub fn empty() -> Self {
+        Punctuated {
+            inner: Vec::new(),
+            last: Box::new(None),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len() + if self.last.is_some() { 1 } else { 0 }
+    }
+
+    pub fn last(&self) -> Option<&T> {
+        (*self.last)
+            .as_ref()
+            .or_else(|| self.inner.last().map(|both| &both.0))
+    }
+
+    pub fn first(&self) -> Option<&T> {
+        self.inner
+            .get(0)
+            .map(|both| &both.0)
+            .or_else(|| (*self.last).as_ref())
+    }
+
+    pub fn values<'a>(&'a self) -> Box<dyn Iterator<Item = &T> + 'a> {
+        Box::new(
+            self.inner
+                .iter()
+                .map(|pair| &pair.0)
+                .chain(self.last.iter()),
+        )
+    }
+}
+
+impl<T: Parsable, S: Parsable> Parsable for Punctuated<T, S> {
+    fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+        let mut inner = Vec::new();
+        let mut last = None;
+
+        while !cursor.at_end() {
+            let next = cursor.parse()?;
+            if cursor.at_end() {
+                last = Some(next);
+                break;
+            }
+            let sep = cursor.parse()?;
+
+            inner.push((next, sep));
+        }
+
+        Ok(Self {
+            inner,
+            last: Box::new(last),
+        })
+    }
+
+    fn description(&self) -> &'static str {
+        "punctuated expression"
+    }
+}
+
+#[macro_export]
+macro_rules! punctuated {
+    ($cursor:expr, $content:pat, $seperator:pat$(,)?) => {{
+        let mut inner = Vec::new();
+        let mut last = None;
+
+        while let Some(tok) = $cursor.peek() {
+            match tok.inner() {
+                $content => last = Some($cursor.parse()?),
+                $seperator => match last.take() {
+                    Some(l) => inner.push((l, $cursor.parse()?)),
+                    None => {
+                        return Err($crate::spanned_error!(
+                            tok.span().clone(),
+                            "unexpected duplicate seperator"
+                        ))
+                    }
+                },
+                _ => break,
+            }
+        }
+
+        Ok(Punctuated::new(inner, last))
+    }};
+    ($cursor:expr, !$end:pat, $seperator:pat) => {{
+        let mut inner = Vec::new();
+        let mut last = None;
+        let mut err = None;
+
+        while let Some(tok) = $cursor.peek() {
+            match tok.inner() {
+                $end => break,
+                $seperator => match last.take() {
+                    Some(l) => inner.push((l, $cursor.parse()?)),
+                    None => {
+                        err = Some(tok.span().clone());
+                        break;
+                    }
+                },
+                _ => last = Some($cursor.parse()?),
+            }
+        }
+
+        if let Some(span) = err {
+            Err($crate::spanned_error!(
+                span,
+                "unexpected duplicate seperator"
+            ))
+        } else {
+            Ok(Punctuated::new(inner, last))
+        }
+    }};
+}

@@ -1,6 +1,6 @@
-use crate::{seek, span::Spanned, spanned_error, Token};
+use crate::{build::ascii::AsciiStr, seek, span::Spanned, spanned_error, Token};
 
-use super::{lex::{Delimeter, Keyword, Primitive, Punctuation, Token}, parse::Parsable, token::Ident};
+use super::{lex::{Delimeter, Keyword, Primitive, Punctuation, Token}, parse::{Parsable, Punctuated}, token::Ident};
 
 #[derive(Debug, Clone)]
 pub enum Statement {
@@ -24,6 +24,16 @@ pub enum Statement {
     }
 }
 
+impl Parsable for Spanned<Statement> {
+    fn parse(cursor: &mut super::parse::Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        todo!()
+    }
+
+    fn description(&self) -> &'static str {
+        "statement"
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ForLoop {
     init: Spanned<Statement>,
@@ -40,7 +50,82 @@ pub struct WhileLoop {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    Void,
+    Immediate(i128),
+    Boolean(bool),
+    Str(AsciiStr),
+    Reference(Path),
+    Call(Box<Spanned<Expr>>, Punctuated<Spanned<Expr>, Token![,]>),
+    Tuple(Vec<Spanned<Expr>>),
+    Array(Punctuated<Spanned<Expr>, Token![,]>),
+    BinaryOp(Box<BinOp>),
+    UnaryOp(Spanned<UnaryOp>, Box<Spanned<Expr>>),
+    As(Box<Spanned<Expr>>, Spanned<Type>),
+    Err,
+}
 
+impl Expr {
+
+}
+
+impl Parsable for Spanned<Expr> {
+    fn parse(cursor: &mut super::parse::Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        todo!()
+    }
+
+    fn description(&self) -> &'static str {
+        "expression"
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Path {
+    
+}
+
+#[derive(Debug, Clone)]
+pub struct BinOp {
+    lhs: Expr,
+    op: BinaryOp,
+    rhs: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub enum BinaryOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Assign,
+    AddEq,
+    SubEq,
+    MulEq,
+    DivEq,
+    ModEq,
+    AndEq,
+    OrEq,
+    XorEq,
+    Equality,
+    Inequality,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    And,
+    Or,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Index,
+}
+
+#[derive(Debug, Clone)]
+pub enum UnaryOp {
+    Negative,
+    Not,
+    Deref,
+    Ref(Mutability),
 }
 
 #[derive(Debug, Clone)]

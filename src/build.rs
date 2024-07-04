@@ -1,4 +1,6 @@
-mod frontend {}
+mod frontend {
+    pub mod uncaught_error;
+}
 
 mod syntax {
     pub mod ast;

@@ -69,11 +69,11 @@ such as arrays or strings.
 Each type of constant has its own unique use case.
 This table will help compare the pros and cons of each type:
 
-|    Type   | Location | References | Mutable | Duplicated |
-|-----------|:--------:|:----------:|:-------:|:----------:|
-| `static`  |   RAM    |     ✅     |    ✅   |      ❌    |
-| `const`   |   ROM    |     ✅     |    ✅   |      ✅    |
-| `progmem` |   ROM    |     ❌     |    ❌   |      ❌    |
+|    Type   | Location | References | Mutable | Duplicated | Type Required |
+|-----------|:--------:|:----------:|:-------:|:----------:|:-------------:|
+| `static`  |   RAM    |     ✅     |    ✅   |     ❌    |       ✅      |
+| `const`   |   ROM    |     ❌     |    ❌   |     ✅    |       ❌      |
+| `progmem` |   ROM    |     ❌     |    ❌   |     ❌    |       ✅      |
 
 ## Functions
 
