@@ -192,7 +192,7 @@ pub enum Token {
     #[regex(r"'[\x00-\x7F]*'", Token::char)]
     #[regex(r#"'\\[(\\)n"at0rbfv]'"#, Token::char)]
     #[regex(r"'\\x[[:xdigit:]]{1,2}'", Token::char)]
-    Immediate(i64),
+    Immediate(i128),
 
     #[regex(r#""((\\")|[\x00-\x21\x23-\x7F])*""#, Token::string)]
     #[regex(r##"r#"((\\")|[\x00-\x21\x23-\x7F])*"#"##, Token::raw_string)]
@@ -218,27 +218,27 @@ impl Token {
         }
     }
 
-    fn binary(lex: &mut Lexer<Token>) -> Option<i64> {
+    fn binary(lex: &mut Lexer<Token>) -> Option<i128> {
         let slice = lex.slice().replace("_", "");
-        i64::from_str_radix(&slice.strip_prefix("0b")?, 2).ok()
+        i128::from_str_radix(&slice.strip_prefix("0b")?, 2).ok()
     }
 
-    fn octal(lex: &mut Lexer<Token>) -> Option<i64> {
+    fn octal(lex: &mut Lexer<Token>) -> Option<i128> {
         let slice = lex.slice().replace("_", "");
-        i64::from_str_radix(&slice.strip_prefix("0o")?, 8).ok()
+        i128::from_str_radix(&slice.strip_prefix("0o")?, 8).ok()
     }
 
-    fn decimal(lex: &mut Lexer<Token>) -> Option<i64> {
+    fn decimal(lex: &mut Lexer<Token>) -> Option<i128> {
         let slice = lex.slice().replace("_", "");
-        i64::from_str_radix(&slice, 10).ok()
+        i128::from_str_radix(&slice, 10).ok()
     }
 
-    fn hexadecimal(lex: &mut Lexer<Token>) -> Option<i64> {
+    fn hexadecimal(lex: &mut Lexer<Token>) -> Option<i128> {
         let slice = lex.slice().replace("_", "");
-        i64::from_str_radix(&slice.strip_prefix("0x")?, 16).ok()
+        i128::from_str_radix(&slice.strip_prefix("0x")?, 16).ok()
     }
 
-    fn char(lex: &mut Lexer<Token>) -> Result<i64, Diagnostic> {
+    fn char(lex: &mut Lexer<Token>) -> Result<i128, Diagnostic> {
         let slice = lex.slice();
         Self::char_from_str(slice).map(|c| c.into())
     }

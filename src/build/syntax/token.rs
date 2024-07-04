@@ -210,7 +210,7 @@ parsable! {
 //------ Containers ------//
 
 parsable! {
-    "integer" : Immediate(value) => Immediate { pub value: i64 },
+    "integer" : Immediate(value) => Immediate { pub value: i128 },
     "string" : String(value) => StringLit { pub value: AsciiStr },
 }
 

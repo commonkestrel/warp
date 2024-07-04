@@ -338,7 +338,7 @@ impl Expr {
 
     fn parse_terminal(cursor: &mut Cursor) -> Spanned<Self> {
         let mut a = Expr::parse_factor(cursor);
-        
+
         while let Some(tok) = cursor.peek().cloned() {
             match tok.inner() {
                 Token::Punctuation(Punctuation::Star) => {
@@ -363,18 +363,64 @@ impl Expr {
                     let mut params_inner = Vec::new();
                     let mut last_param = None;
 
+                    while let Some(tok) = cursor.peek().cloned() {
+                        match tok.inner() {
+                            Token::Delimeter(Delimeter::CloseParen) => break,
+                            Token::Punctuation(Punctuation::Comma) => match last_param.take() {
+                                Some(param) => params_inner.push((param, Token![,])),
+                                None => {
+                                    cursor.reporter().report_sync(spanned_error!(
+                                        tok.span().clone(),
+                                        "unexpected duplicate seperator"
+                                    ));
+
+                                    cursor.seek(&Token::Delimeter(Delimeter::CloseParen));
+                                    cursor.step();
+
+                                    return Spanned::new(Expr::Err, tok.into_span());
+                                }
+                            },
+                            // We use `parse_assignment` here instead of `parse` since `parse`
+                            // just wraps the result of `parse_assignment` in a `Result`
+                            _ => last_param = Some(Expr::parse_assignment(cursor)),
+                        }
+                    }
+
                     let params = Punctuated::new(params_inner, last_param);
 
                     let close: Spanned<Token![")"]> = match cursor.parse() {
                         Ok(close) => close,
-                        Err(err) => {
-                            cursor.reporter().report_sync(spanned_error!(tok.span().clone(), "unmatched opening parenthesis"));
-                            return Spanned::new(Expr::Err, tok.into_span())
+                        Err(_) => {
+                            cursor.reporter().report_sync(spanned_error!(
+                                tok.span().clone(),
+                                "unmatched opening parenthesis"
+                            ));
+                            return Spanned::new(Expr::Err, tok.into_span());
                         }
                     };
 
                     let call_span = a.span().to(close.span());
                     a = Spanned::new(Expr::Call(Box::new(a), params), call_span);
+                }
+                Token::Delimeter(Delimeter::OpenBracket) => {
+                    cursor.step();
+
+                    let idx = Expr::parse_assignment(cursor);
+
+                    if cursor.check(&Token::Delimeter(Delimeter::CloseBracket)) {
+                        let close_span = cursor.next().unwrap().into_span();
+                        let expr_span = a.span().to(&close_span);
+                        let idx_span = tok.span().to(&close_span);
+
+                        a = Spanned::new(
+                            Expr::BinaryOp(BinOp::boxed(
+                                a,
+                                idx,
+                                Spanned::new(BinaryOp::Index, idx_span),
+                            )),
+                            expr_span,
+                        )
+                    }
                 }
                 _ => return a,
             }
@@ -384,7 +430,41 @@ impl Expr {
     }
 
     fn parse_factor(cursor: &mut Cursor) -> Spanned<Self> {
-        todo!()
+        let (tok, span) = match cursor.next() {
+            Some(next) => next.deconstruct(),
+            None => {
+                cursor.reporter().report_sync(spanned_error!(
+                    cursor.eof_span(),
+                    "expected expression, found `EOF`",
+                ));
+
+                return Spanned::new(Expr::Err, cursor.eof_span());
+            }
+        };
+
+        match tok {
+            //------ Literals ------//
+            Token::Immediate(i) => Spanned::new(Expr::Immediate(i), span),
+            Token::Boolean(b) => Spanned::new(Expr::Boolean(b), span),
+            Token::String(string) => Spanned::new(Expr::Str(string), span),
+            Token::Primitive(Primitive::Void) => Spanned::new(Expr::Void, span),
+            //------- Unary -------//
+            Token::Punctuation(Punctuation::Not) => Expr::unop(cursor, Spanned::new(UnaryOp::Not, span)),
+            Token::Punctuation(Punctuation::Minus) => Expr::unop(cursor, Spanned::new(UnaryOp::Negative, span)),
+            Token::Punctuation(Punctuation::Star) => Expr::unop(cursor, Spanned::new(UnaryOp::Deref, span)),
+            Token::Punctuation(Punctuation::And) => {
+                todo!()
+            }
+            _ => {
+                cursor.reporter().report_sync(spanned_error!(
+                    span.clone(),
+                    "expected expression, found {}",
+                    tok.description(),
+                ));
+
+                Spanned::new(Expr::Err, span)
+            }
+        }
     }
 
     //------- Utilities -------//
@@ -401,6 +481,19 @@ impl Expr {
         let expr_span = a.span().to(b.span());
 
         Spanned::new(Expr::BinaryOp(BinOp::boxed(a, b, op)), expr_span)
+    }
+
+    fn unop(
+        cursor: &mut Cursor,
+        op: Spanned<UnaryOp>,
+    ) -> Spanned<Expr> {
+        let expr = Expr::parse_factor(cursor);
+        let expr_span = op.span().to(expr.span());
+
+        Spanned::new(
+            Expr::UnaryOp(op, Box::new(expr)),
+            expr_span,
+        )
     }
 }
 
