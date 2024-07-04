@@ -5,5 +5,3 @@ pub trait UncaughtUnwrap {
 
     fn unwrap(self) -> Result<Self::Output, Diagnostic>;
 }
-
-

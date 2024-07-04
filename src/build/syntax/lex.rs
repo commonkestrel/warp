@@ -101,6 +101,8 @@ impl Parsable for Spanned<Token> {
 #[logos(skip r"/\*(?:[^*]|\*[^/])*\*/")]
 pub enum Token {
     #[token("import", |_| Keyword::Import)]
+    #[token("super", |_| Keyword::Super)]
+    #[token("root", |_| Keyword::Root)]
     #[token("fn", |_| Keyword::Fn)]
     #[token("return", |_| Keyword::Return)]
     #[token("pub", |_| Keyword::Pub)]
@@ -303,6 +305,8 @@ impl Token {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Keyword {
     Import,
+    Super,
+    Root,
     Fn,
     Return,
     Pub,
@@ -325,6 +329,8 @@ impl Keyword {
     fn description(&self) -> &'static str {
         match self {
             Keyword::Import => "keyword `import`",
+            Keyword::Super => "keyword `super`",
+            Keyword::Root => "keyword `root`",
             Keyword::Fn => "keyword `fn`",
             Keyword::Return => "keyword `return`",
             Keyword::Pub => "keyword `pub`",
