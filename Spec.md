@@ -132,4 +132,9 @@ This significantly improves the readability and
 
 ## Visibility
 
+Constants and functions can either be private, protected, or public.
+Private means that the item can only be accessed within the same file.
+Protected means that only files in the same project can access the item.
+Public means that any file is able to access or import the item.
 
+Items are private by default, and they can be specified either protected or public with the modifiers `prot` and `pub` respectively.
