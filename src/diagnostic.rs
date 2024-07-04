@@ -55,6 +55,24 @@ impl Diagnostic {
         }
     }
 
+    pub fn info<S: Into<String>>(message: S) -> Self {
+        Diagnostic {
+            level: Level::Info,
+            message: message.into(),
+            note: None,
+            span: None,
+        }
+    }
+
+    pub fn spanned_info<M: Into<String>, S: Into<Arc<Span>>>(span: S, message: M) -> Self {
+        Diagnostic {
+            level: Level::Info,
+            message: message.into(),
+            note: None,
+            span: Some(span.into()),
+        }
+    }
+
     pub fn debug<S: Into<String>>(message: S) -> Self {
         Diagnostic {
             level: Level::Debug,
@@ -330,6 +348,16 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! spanned_warn {
     ($span:expr, $($arg:tt)*) => ($crate::diagnostic::Diagnostic::spanned_warn($span, ::std::format!($($arg)*)))
+}
+
+#[macro_export]
+macro_rules! info {
+    ($($arg:tt)*) => ($crate::diagnostic::Diagnostic::info(::std::format!($($arg)*)))
+}
+
+#[macro_export]
+macro_rules! spanned_info {
+    ($span:expr, $($arg:tt)*) => ($crate::diagnostic::Diagnostic::spanned_info($span, ::std::format!($($arg)*)))
 }
 
 #[macro_export]

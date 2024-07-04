@@ -1,6 +1,7 @@
 use std::fmt;
 
 use lazy_regex::{regex, regex_replace_all};
+use oem_cp::{code_table::ENCODING_TABLE_CP737, encode_string_checked};
 
 #[derive(Clone, PartialEq)]
 pub struct AsciiStr {
@@ -8,6 +9,10 @@ pub struct AsciiStr {
 }
 
 impl AsciiStr {
+    pub fn new(bytes: Vec<u8>) -> Self {
+        AsciiStr{inner: bytes}
+    }
+
     pub unsafe fn from_bytes_unchecked<T: Iterator<Item = u8>>(buf: T) -> Self {
         AsciiStr {
             inner: buf.collect(),
@@ -81,41 +86,22 @@ impl IntoIterator for AsciiStr {
 #[derive(Debug, Clone, Copy)]
 pub enum UnescapeError {
     UnmatchedBackslash(usize),
-    InvalidAscii(char),
+    InvalidAscii,
 }
 
 pub fn unescape_str<'a>(s: &'a str) -> Result<AsciiStr, UnescapeError> {
-    let mut failure = None;
-
     let mut numbered = regex_replace_all!(r"\\x[0-9a-fA-F]{2}", s, |cap: &str| {
         let byte = u8::from_str_radix(cap.strip_prefix("\\x").unwrap(), 16).unwrap();
-
-        if byte > 0x7F {
-            failure = Some(byte);
-        }
-
         unsafe { String::from_utf8_unchecked(vec![byte]) }
     });
-
-    if let Some(byte) = failure {
-        return Err(UnescapeError::InvalidAscii(byte as char));
-    }
 
     let owned = numbered.to_owned();
     numbered = regex_replace_all!(r"\\o[0-7]{3}", &owned, |oct: &str| {
         // The Regex expression guarantees a valid octal.
         let byte = u8::from_str_radix(oct.strip_prefix("\\o").unwrap(), 8).unwrap();
 
-        if byte > 0x7F {
-            failure = Some(byte);
-        }
-
         unsafe { String::from_utf8_unchecked(vec![byte]) }
     });
-
-    if let Some(byte) = failure {
-        return Err(UnescapeError::InvalidAscii(byte as char));
-    }
 
     if let Some(invalid) = regex!(r"(\\[^nt0rabfv\\])|(\\\z)").find(&numbered) {
         return Err(UnescapeError::UnmatchedBackslash(invalid.start()));
@@ -134,17 +120,10 @@ pub fn unescape_str<'a>(s: &'a str) -> Result<AsciiStr, UnescapeError> {
         .replace("\\f", "\x0C")
         .replace("\\v", "\x0B");
 
-    if let Some(byte) = simple.find(|c| c > '\x7F') {
-        return Err(UnescapeError::InvalidAscii(
-            simple.chars().nth(byte).unwrap(),
-        ));
-    }
+    let mut string = encode_string_checked(simple, &ENCODING_TABLE_CP737).ok_or(UnescapeError::InvalidAscii)?;
+    string.push(0x00);
 
-    unsafe {
-        Ok(AsciiStr::from_bytes_unchecked(
-            simple.bytes().chain(std::iter::once(0)),
-        ))
-    }
+    Ok(AsciiStr::new(string))
 }
 
 mod tests {

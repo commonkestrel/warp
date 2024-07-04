@@ -1,10 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    diagnostic::Diagnostic,
-    error,
-    span::{Lookup, Span, Spanned},
-    spanned_error,
+    diagnostic::Diagnostic, error, info, span::{Lookup, Span, Spanned}, spanned_error
 };
 
 use async_std::{
@@ -189,10 +186,7 @@ pub enum Token {
     #[regex(r"0o[0-7][_0-7]*", Token::octal)]
     #[regex(r"-?[0-9][_0-9]*", Token::decimal)]
     #[regex(r"0x[0-9a-fA-F][_0-9a-fA-F]*", Token::hexadecimal)]
-    // Yes this is god awful but there are a lot of random characters in code-page 737
-    #[regex(r"'[\x00-\x7FΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρσςτυφχψ░▒▓│┤╡╢╖╕╣║╗╝╜╛┐└┴┬├─┼╞╟╚╔╩╦╠═╬╧╨╤╥╙╘╒╓╫╪┘┌█▄▌▐▀ωάέήϊίόύϋώΆΈΉΊΌΎΏ±≥≤ΪΫ÷≈°∙·√ⁿ²■]*'", Token::char)]
-    #[regex(r#"'\\[(\\)n"at0rbfv]'"#, Token::char)]
-    #[regex(r"'\\x[[:xdigit:]]{1,2}'", Token::char)]
+    #[regex(r"'((\\')|[^'])*'", Token::char)]
     Immediate(i128),
 
     #[regex(r#""((\\")|[\x00-\x21\x23-\x7F])*""#, Token::string)]
@@ -241,6 +235,7 @@ impl Token {
 
     fn char(lex: &mut Lexer<Token>) -> Result<i128, Diagnostic> {
         let slice = lex.slice();
+        info!("char: {slice}; success: {:?}", Self::char_from_str(slice)).sync_emit();
         Self::char_from_str(slice).map(|c| c.into())
     }
 
@@ -253,7 +248,7 @@ impl Token {
 
         let escaped = unescape_str(inner).map_err(|err| {
             Diagnostic::error(match err {
-                UnescapeError::InvalidAscii(byte) => format!("invalid ASCII character: {byte}"),
+                UnescapeError::InvalidAscii => format!("invalid ASCII"),
                 UnescapeError::UnmatchedBackslash(index) => {
                     format!("unmatched `\\` at string index {index}")
                 }
@@ -272,7 +267,7 @@ impl Token {
 
         Ok(unescape_str(&slice).map_err(|err| {
             Diagnostic::error(match err {
-                UnescapeError::InvalidAscii(byte) => format!("invalid ASCII character: {byte}"),
+                UnescapeError::InvalidAscii => format!("invalid ASCII"),
                 UnescapeError::UnmatchedBackslash(index) => {
                     format!("unmatched '\\' at string index {index}")
                 }
@@ -290,7 +285,7 @@ impl Token {
 
         Ok(unescape_str(&slice).map_err(|err| {
             Diagnostic::error(match err {
-                UnescapeError::InvalidAscii(byte) => format!("invalid ASCII character: {byte}"),
+                UnescapeError::InvalidAscii => format!("invalid ASCII"),
                 UnescapeError::UnmatchedBackslash(index) => {
                     format!("unmatched `\\` at string index {index}")
                 }
