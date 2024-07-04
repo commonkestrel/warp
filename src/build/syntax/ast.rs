@@ -448,12 +448,116 @@ impl Expr {
             Token::Boolean(b) => Spanned::new(Expr::Boolean(b), span),
             Token::String(string) => Spanned::new(Expr::Str(string), span),
             Token::Primitive(Primitive::Void) => Spanned::new(Expr::Void, span),
+            Token::Ident(_) => {
+                cursor.step_back();
+
+                let (path, span) = match cursor.parse::<Spanned<Path>>() {
+                    Ok(path) => path.deconstruct(),
+                    Err(err) => {
+                        cursor.reporter().report_sync(err);
+                        return Spanned::new(Expr::Err, span);
+                    }
+                };
+
+                Spanned::new(Expr::Reference(path), span)
+            }
+            Token::Delimeter(Delimeter::OpenParen) => {
+                let a = Expr::parse_tuple(cursor);
+
+                match cursor.next().map(Spanned::into_inner) {
+                    Some(Token::Delimeter(Delimeter::CloseParen)) => a,
+                    _ => {
+                        cursor.step_back();
+
+                        cursor.reporter().report_sync(spanned_error!(
+                            span.clone(),
+                            "unmatched opening parenthesis",
+                        ));
+
+                        Spanned::new(Expr::Err, span)
+                    }
+                }
+            }
+            Token::Delimeter(Delimeter::OpenBracket) => {
+                let mut contents_inner = Vec::new();
+                let mut last_expr = None;
+
+                while let Some(tok) = cursor.peek().cloned() {
+                    match tok.inner() {
+                        Token::Delimeter(Delimeter::CloseBracket) => break,
+                        Token::Punctuation(Punctuation::Comma) => match last_expr.take() {
+                            Some(last) => contents_inner.push((last, Token![,])),
+                            None => {
+                                cursor.reporter().report_sync(spanned_error!(
+                                    tok.span().clone(),
+                                    "unexpected duplicate seperator",
+                                ));
+
+                                return Spanned::new(Expr::Err, tok.into_span());
+                            }
+                        }
+                        _ => last_expr = Some(Expr::parse_assignment(cursor)),
+                    }
+                }
+
+                let contents = Punctuated::new(contents_inner, last_expr);
+
+                let close: Spanned<Token!["]"]> = match cursor.parse() {
+                    Ok(close) => close,
+                    Err(_) => {
+                        cursor.reporter().report_sync(spanned_error!(
+                            span.clone(), "unmatched opening bracket"
+                        ));
+
+                        return Spanned::new(Expr::Err, span);
+                    }
+                };
+
+                let arr_span = span.to(close.span());
+                Spanned::new(Expr::Array(contents), arr_span)
+            }
             //------- Unary -------//
-            Token::Punctuation(Punctuation::Not) => Expr::unop(cursor, Spanned::new(UnaryOp::Not, span)),
-            Token::Punctuation(Punctuation::Minus) => Expr::unop(cursor, Spanned::new(UnaryOp::Negative, span)),
-            Token::Punctuation(Punctuation::Star) => Expr::unop(cursor, Spanned::new(UnaryOp::Deref, span)),
+            Token::Punctuation(Punctuation::Not) => {
+                Expr::unop(cursor, Spanned::new(UnaryOp::Not, span))
+            }
+            Token::Punctuation(Punctuation::Minus) => {
+                Expr::unop(cursor, Spanned::new(UnaryOp::Negative, span))
+            }
+            Token::Punctuation(Punctuation::Star) => {
+                Expr::unop(cursor, Spanned::new(UnaryOp::Deref, span))
+            }
             Token::Punctuation(Punctuation::And) => {
-                todo!()
+                let (mutability, op_span) = if cursor.check(&Token::Keyword(Keyword::Mut)) {
+                    (
+                        Mutability::Mutable,
+                        span.to(&cursor.next().unwrap().into_span()),
+                    )
+                } else {
+                    (Mutability::Immutable, span)
+                };
+
+                let expr = Expr::parse_factor(cursor);
+                let expr_span = op_span.to(expr.span());
+
+                Spanned::new(
+                    Expr::UnaryOp(
+                        Spanned::new(UnaryOp::Ref(mutability), op_span),
+                        Box::new(expr),
+                    ),
+                    expr_span,
+                )
+            }
+            //----- Fallbacks -----//
+            Token::Punctuation(Punctuation::Semicolon) => {
+                cursor.step_back();
+
+                cursor.reporter().report_sync(spanned_error!(
+                    span.clone(),
+                    "expected expression, found {}",
+                    tok.description(),
+                ));
+
+                Spanned::new(Expr::Err, span)
             }
             _ => {
                 cursor.reporter().report_sync(spanned_error!(
@@ -483,17 +587,11 @@ impl Expr {
         Spanned::new(Expr::BinaryOp(BinOp::boxed(a, b, op)), expr_span)
     }
 
-    fn unop(
-        cursor: &mut Cursor,
-        op: Spanned<UnaryOp>,
-    ) -> Spanned<Expr> {
+    fn unop(cursor: &mut Cursor, op: Spanned<UnaryOp>) -> Spanned<Expr> {
         let expr = Expr::parse_factor(cursor);
         let expr_span = op.span().to(expr.span());
 
-        Spanned::new(
-            Expr::UnaryOp(op, Box::new(expr)),
-            expr_span,
-        )
+        Spanned::new(Expr::UnaryOp(op, Box::new(expr)), expr_span)
     }
 }
 

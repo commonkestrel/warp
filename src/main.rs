@@ -2,6 +2,8 @@ mod build;
 mod diagnostic;
 mod span;
 
+use std::process::ExitCode;
+
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
@@ -22,6 +24,12 @@ enum Command {
     },
 }
 
-fn main() {
-    println!("Hello, world!");
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Command::Build { input, output } => {
+            build::build(input, output)
+        }
+    }
 }
