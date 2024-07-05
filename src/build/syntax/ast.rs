@@ -52,6 +52,13 @@ macro_rules! inline_unwrap {
 }
 
 impl Statement {
+    fn requires_semicolon(&self) -> bool {
+        match self {
+            Statement::Expr(_) | Statement::Return(_) | Statement::Break | Statement::Continue | Statement::Asm(_) | Statement::Var{..} => true,
+            _ => false,
+        }
+    }
+
     fn parse(cursor: &mut Cursor) -> Spanned<Statement> {
         let (tok, span) = inline_unwrap!(cursor, Option = cursor.next(), spanned_error!(cursor.eof_span(), "expected statemenet, found `EOF`"), Statement)
             .deconstruct();
@@ -80,9 +87,37 @@ impl Statement {
                     if_span,
                 )
             }
+            Token::Keyword(Keyword::For) => {
+                let header = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                let content = Statement::parse(cursor);
+
+                let for_span = span.to(content.span());
+                let for_loop = ForLoop{header, content};
+
+                Spanned::new(Statement::For(Box::new(for_loop)), for_span)
+            }
+            Token::Keyword(Keyword::While) => {
+                let check = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                let contents = Statement::parse(cursor);
+
+                let while_span = span.to(contents.span());
+                let while_loop = WhileLoop {check, contents};
+
+                Spanned::new(Statement::While(Box::new(while_loop)), while_span)
+            }
+            Token::Keyword(Keyword::Break) => Spanned::new(Statement::Break, span),
+            Token::Keyword(Keyword::Continue) => Spanned::new(Statement::Continue, span),
+            Token::Keyword(Keyword::Return) => {
+                let value = Expr::parse_assignment(cursor);
+
+                let return_span = span.to(value.span());
+                Spanned::new(Statement::Return(value), return_span)
+            }
             _ => {
-                cursor.reporter().report_sync(spanned_error!(span.clone(), "expected statement, found {}", tok.description()));
-                Spanned::new(Statement::Err, span)
+                cursor.step_back();
+
+                let (expr, span) = Expr::parse_assignment(cursor).deconstruct();
+                Spanned::new(Statement::Expr(expr), span)
             }
         }
 
@@ -101,16 +136,39 @@ impl Parsable for Spanned<Statement> {
 
 #[derive(Debug, Clone)]
 pub struct ForLoop {
+    header: Parenthesized<ForHeader>,
+    content: Spanned<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ForHeader {
     init: Spanned<Statement>,
     check: Spanned<Statement>,
     post: Spanned<Statement>,
-    content: Spanned<Statement>,
+}
+
+impl Parsable for ForHeader {
+    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let init = Statement::parse(cursor);
+        cursor.expect_semicolon();
+
+        let check = Statement::parse(cursor);
+        cursor.expect_semicolon();
+
+        let post = Statement::parse(cursor);
+        
+        Ok(ForHeader{init, check, post})
+    }
+
+    fn description(&self) -> &'static str {
+        "for loop header"
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct WhileLoop {
     check: Spanned<Statement>,
-    contents: Box<Spanned<Statement>>,
+    contents: Spanned<Statement>,
 }
 
 #[derive(Debug, Clone)]
