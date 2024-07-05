@@ -211,7 +211,7 @@ parsable! {
 
 parsable! {
     "integer" : Immediate(value) => Immediate { pub value: i128 },
-    "string" : String(value) => StringLit { pub value: AsciiStr },
+    "string" : String(value) => LitString { pub value: AsciiStr },
 }
 
 // Declare this seperately in order to implement `Eq`, `Copy`, and `Hash` for `Ident`

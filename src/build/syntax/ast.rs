@@ -1,9 +1,9 @@
-use crate::{build::ascii::AsciiStr, seek, span::Spanned, spanned_error, Token};
+use crate::{build::ascii::AsciiStr, seek, span::{Span, Spanned}, spanned_error, Token};
 
 use super::{
-    lex::{Delimeter, Keyword, Primitive, Punctuation, Token},
+    lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token},
     parse::{Cursor, Parenthesized, Parsable, Punctuated},
-    token::Ident,
+    token::{Ident, LitString},
 };
 
 #[derive(Debug, Clone)]
@@ -20,11 +20,11 @@ pub enum Statement {
     Break,
     Continue,
     Return(Spanned<Expr>),
-    Asm(Spanned<String>),
+    Asm(Parenthesized<Spanned<LitString>>),
     Var {
         mutability: Mutability,
         ident: Spanned<Ident>,
-        ty: Spanned<Type>,
+        ty: Option<Spanned<Type>>,
         assignment: Spanned<Expr>,
     },
     Err,
@@ -113,6 +113,45 @@ impl Statement {
                 let return_span = span.to(value.span());
                 Spanned::new(Statement::Return(value), return_span)
             }
+            Token::Delimeter(Delimeter::OpenBrace) => {
+                let mut statements = Vec::new();
+
+                while let Some(tok) = cursor.peek() {
+                    match tok.inner() {
+                        Token::Punctuation(Punctuation::Semicolon) => cursor.step(),
+                        Token::Delimeter(Delimeter::CloseBrace) => break,
+                        _ => {
+                            let statement = Statement::parse(cursor);
+                            if statement.requires_semicolon() {
+                                cursor.expect_semicolon();
+                            }
+
+                            statements.push(statement);
+                        }
+                    }
+                }
+
+                let close: Spanned<Token!["}"]> = match cursor.parse() {
+                    Ok(close) => close,
+                    Err(_) => {
+                        cursor.step_back();
+
+                        cursor.reporter().report_sync(spanned_error!(span.clone(), "unmatched opening brace"));
+                        return Spanned::new(Statement::Err, span);
+                    }
+                };
+
+                let block_span = span.to(close.span());
+                Spanned::new(Statement::Block(statements), block_span)
+            }
+            Token::Macro(Macro::Asm) => {
+                let string: Parenthesized<Spanned<LitString>> = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                let asm_span = span.to(string.span());
+
+                Spanned::new(Statement::Asm(string), asm_span)
+            }
+            Token::Keyword(Keyword::Let) => Statement::variable(cursor, span, Mutability::Immutable),
+            Token::Keyword(Keyword::Mut) => Statement::variable(cursor, span, Mutability::Mutable),
             _ => {
                 cursor.step_back();
 
@@ -120,7 +159,23 @@ impl Statement {
                 Spanned::new(Statement::Expr(expr), span)
             }
         }
+    }
 
+    fn variable(cursor: &mut Cursor, keyword_span: Span, mutability: Mutability) -> Spanned<Statement> {
+        let ident = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+
+        let ty = if cursor.check(&Token::Punctuation(Punctuation::Colon)) {
+            cursor.step();
+            Some(inline_unwrap!(cursor, Result = cursor.parse(), Statement))
+        } else {
+            None
+        };
+
+        let _: Token![=] = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+        let assignment = Expr::parse_assignment(cursor);
+
+        let var_span = keyword_span.to(assignment.span());
+        Spanned::new(Statement::Var{ mutability, ident, ty, assignment}, var_span)
     }
 }
 
@@ -509,6 +564,8 @@ impl Expr {
                     let close: Spanned<Token![")"]> = match cursor.parse() {
                         Ok(close) => close,
                         Err(_) => {
+                            cursor.step_back();
+
                             cursor.reporter().report_sync(spanned_error!(
                                 tok.span().clone(),
                                 "unmatched opening parenthesis"
