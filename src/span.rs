@@ -228,7 +228,7 @@ impl Lookup {
     }
 
     pub fn line(&self, index: usize) -> &str {
-        let range = self.heads[index]..self.heads[index + 1];
+        let range = self.heads[index]..(*self.heads.get(index + 1).unwrap_or(&self.source.len()));
 
         &self.source[range]
     }
@@ -237,7 +237,7 @@ impl Lookup {
         info!("{:?}", span).sync_emit();
 
         let start_line = self.line_n(span.start);
-        let next_start = self.heads[start_line + 1];
+        let next_start = *self.heads.get(start_line + 1).unwrap_or(&self.source.len());
 
         if span.end <= next_start {
             // Check if the span ends on the same line

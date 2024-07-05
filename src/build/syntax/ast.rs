@@ -1,4 +1,4 @@
-use crate::{build::ascii::AsciiStr, seek, span::{Span, Spanned}, spanned_error, Token};
+use crate::{build::ascii::AsciiStr, seek, span::{Span, Spanned}, spanned_debug, spanned_error, Token};
 
 use super::{
     lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token},
@@ -166,8 +166,13 @@ impl Statement {
 
         let ty = if cursor.check(&Token::Punctuation(Punctuation::Colon)) {
             cursor.step();
-            Some(inline_unwrap!(cursor, Result = cursor.parse(), Statement))
+            let ty: Spanned<Type> = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+
+            spanned_debug!(ty.span().clone(), "typed variable").sync_emit();
+
+            Some(ty)
         } else {
+            println!("untyped variable");
             None
         };
 
@@ -645,8 +650,6 @@ impl Expr {
                 Spanned::new(Expr::Reference(path), span)
             }
             Token::Macro(Macro::Sizeof) => {
-                cursor.step();
-
                 let _: Token!["("] = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
                 let ty: Spanned<Type> = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
                 let _: Token![")"] = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
@@ -985,90 +988,90 @@ impl From<&Primitive> for Type {
 
 impl Parsable for Spanned<Type> {
     fn parse(cursor: &mut super::parse::Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
-        let peek = cursor.peek();
+        if let Some(tok) = cursor.next() {
+            match tok.inner() {
+                Token::Primitive(p) => Ok(Spanned::new(p.into(), tok.into_span())),
+                Token::Punctuation(Punctuation::Star) => {
+                    let start = tok.into_span();
 
-        match peek.map(|spanned| spanned.inner()) {
-            Some(Token::Primitive(p)) => Ok(Spanned::new(p.into(), peek.unwrap().span().clone())),
-            Some(Token::Punctuation(Punctuation::Star)) => {
-                let start = peek.unwrap().span().clone();
-                cursor.step();
-
-                let mutability = if cursor.check(&Token::Keyword(Keyword::Mut)) {
-                    cursor.step();
-                    Mutability::Mutable
-                } else {
-                    Mutability::Immutable
-                };
-
-                let ty: Spanned<Type> = cursor.parse()?;
-                let span = start.to(ty.span());
-
-                Ok(Spanned::new(
-                    Type::Pointer {
-                        mutability,
-                        ty: Box::new(ty),
-                    },
-                    span,
-                ))
-            }
-            Some(Token::Delimeter(Delimeter::OpenParen)) => {
-                let start = peek.unwrap().span().clone();
-
-                let mut comma = true;
-                let mut types = Vec::new();
-
-                while !cursor.check(&Token::Delimeter(Delimeter::CloseParen)) && !cursor.at_end() {
-                    if !comma {
-                        // We can unwrap here since we are already checking if the cursor has more tokens
-                        let (next_tok, next_span) = cursor.next().unwrap().deconstruct();
-
-                        cursor.reporter().report_sync(spanned_error!(
-                            next_span,
-                            "expected `,`, found {}",
-                            next_tok.description()
-                        ));
-
-                        seek!(
-                            cursor,
-                            Token::Delimeter(Delimeter::CloseParen)
-                                | Token::Punctuation(Punctuation::Comma)
-                        );
+                    let mutability = if cursor.check(&Token::Keyword(Keyword::Mut)) {
+                        cursor.step();
+                        Mutability::Mutable
                     } else {
-                        types.push(cursor.parse()?);
-                        comma = if cursor.check(&Token::Punctuation(Punctuation::Comma)) {
-                            cursor.step();
-                            true
-                        } else {
-                            false
-                        };
-                    }
+                        Mutability::Immutable
+                    };
+
+                    let ty: Spanned<Type> = cursor.parse()?;
+                    let span = start.to(ty.span());
+
+                    Ok(Spanned::new(
+                        Type::Pointer {
+                            mutability,
+                            ty: Box::new(ty),
+                        },
+                        span,
+                    ))
                 }
+                Token::Delimeter(Delimeter::OpenParen) => {
+                    let start = tok.into_span();
 
-                let close: Spanned<Token![")"]> = match cursor.parse() {
-                    Ok(close) => close,
-                    Err(err) => {
-                        cursor.reporter().report_sync(err);
-                        return Ok(Spanned::new(Type::Err, cursor.eof_span()));
+                    let mut comma = true;
+                    let mut types = Vec::new();
+
+                    while !cursor.check(&Token::Delimeter(Delimeter::CloseParen)) && !cursor.at_end() {
+                        if !comma {
+                            // We can unwrap here since we are already checking if the cursor has more tokens
+                            let (next_tok, next_span) = cursor.next().unwrap().deconstruct();
+
+                            cursor.reporter().report_sync(spanned_error!(
+                                next_span,
+                                "expected `,`, found {}",
+                                next_tok.description()
+                            ));
+
+                            seek!(
+                                cursor,
+                                Token::Delimeter(Delimeter::CloseParen)
+                                    | Token::Punctuation(Punctuation::Comma)
+                            );
+                        } else {
+                            types.push(cursor.parse()?);
+                            comma = if cursor.check(&Token::Punctuation(Punctuation::Comma)) {
+                                cursor.step();
+                                true
+                            } else {
+                                false
+                            };
+                        }
                     }
-                };
 
-                Ok(Spanned::new(Type::Tuple(types), start.to(close.span())))
+                    let close: Spanned<Token![")"]> = match cursor.parse() {
+                        Ok(close) => close,
+                        Err(err) => {
+                            cursor.reporter().report_sync(err);
+                            return Ok(Spanned::new(Type::Err, cursor.eof_span()));
+                        }
+                    };
+
+                    Ok(Spanned::new(Type::Tuple(types), start.to(close.span())))
+                }
+                other => {
+                    cursor.step_back();
+
+                    cursor.reporter().report_sync(spanned_error!(
+                        tok.span().clone(),
+                        "expected type, found {}",
+                        other.description(),
+                    ));
+                    Ok(Spanned::new(Type::Err, tok.into_span()))
+                }
             }
-            Some(tok) => {
-                cursor.reporter().report_sync(spanned_error!(
-                    peek.unwrap().span().clone(),
-                    "expected type, found {}",
-                    tok.description()
-                ));
-                Ok(Spanned::new(Type::Err, peek.unwrap().span().clone()))
-            }
-            None => {
-                cursor.reporter().report_sync(spanned_error!(
-                    cursor.eof_span(),
-                    "expected type, found `EOF`"
-                ));
-                Ok(Spanned::new(Type::Err, cursor.eof_span()))
-            }
+        } else {
+            cursor.reporter().report_sync(spanned_error!(
+                cursor.eof_span(),
+                "expected type, found `EOF`"
+            ));
+            Ok(Spanned::new(Type::Err, cursor.eof_span()))
         }
     }
 

@@ -41,12 +41,14 @@ pub async fn lex(source: String, content: File) -> Result<LexResult, Errors> {
         )]
     })?;
     // Replace tabs with spaces to keep character spacing the same
-    let file = Arc::new(file.replace('\t', TAB_SPACING));
+    let file = Arc::new(file.replace('\t', TAB_SPACING).replace("\r", ""));
     let lookup = Arc::new(Lookup::new(file.clone()));
 
     let mut lex = Token::lexer(&file);
 
     while let Some(tok) = lex.next() {
+        info!("slice: {}, span: {:?}", lex.slice(), lex.span()).sync_emit();
+
         let s = Span::new(source.clone(), lookup.clone(), lex.span());
 
         match tok {
