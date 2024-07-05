@@ -2,7 +2,7 @@ use crate::{build::ascii::AsciiStr, seek, span::Spanned, spanned_error, Token};
 
 use super::{
     lex::{Delimeter, Keyword, Primitive, Punctuation, Token},
-    parse::{Cursor, Parsable, Punctuated},
+    parse::{Cursor, Parenthesized, Parsable, Punctuated},
     token::Ident,
 };
 
@@ -11,7 +11,7 @@ pub enum Statement {
     Expr(Expr),
     Block(Vec<Spanned<Statement>>),
     If {
-        condition: Spanned<Expr>,
+        condition: Parenthesized<Spanned<Expr>>,
         content: Box<Spanned<Statement>>,
         else_block: Option<Box<Spanned<Statement>>>,
     },
@@ -27,11 +27,71 @@ pub enum Statement {
         ty: Spanned<Type>,
         assignment: Spanned<Expr>,
     },
+    Err,
+}
+
+macro_rules! inline_unwrap {
+    ($cursor:expr, Result = $expr:expr, $enum:ident) => {
+        match $expr {
+            Ok(ok) => ok,
+            Err(err) => {
+                $cursor.reporter().report_sync(err);
+                return Spanned::new($enum::Err, $cursor.eof_span());
+            }
+        }
+    };
+    ($cursor:expr, Option = $expr:expr, $err:expr, $enum:ident) => {
+        match $expr {
+            Some(some) => some,
+            None => {
+                $cursor.reporter().report_sync($err);
+                return Spanned::new($enum::Err, $cursor.eof_span());
+            }
+        }
+    };
+}
+
+impl Statement {
+    fn parse(cursor: &mut Cursor) -> Spanned<Statement> {
+        let (tok, span) = inline_unwrap!(cursor, Option = cursor.next(), spanned_error!(cursor.eof_span(), "expected statemenet, found `EOF`"), Statement)
+            .deconstruct();
+
+        match tok {
+            Token::Keyword(Keyword::If) => {
+                let condition = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+
+                let content: Spanned<Statement> = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+
+                let (else_clause, if_span) = if cursor.check(&Token::Keyword(Keyword::Else)) {
+                    let else_clause: Spanned<Statement> = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                    let if_span = span.to(else_clause.span());
+                
+                    (Some(Box::new(else_clause)), if_span)
+                } else {
+                    (None, span.to(content.span()))
+                };
+
+                Spanned::new(
+                    Statement::If {
+                        condition,
+                        content: Box::new(content),
+                        else_block: else_clause,
+                    },
+                    if_span,
+                )
+            }
+            _ => {
+                cursor.reporter().report_sync(spanned_error!(span.clone(), "expected statement, found {}", tok.description()));
+                Spanned::new(Statement::Err, span)
+            }
+        }
+
+    }
 }
 
 impl Parsable for Spanned<Statement> {
     fn parse(cursor: &mut super::parse::Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
-        todo!()
+        Ok(Statement::parse(cursor))
     }
 
     fn description(&self) -> &'static str {

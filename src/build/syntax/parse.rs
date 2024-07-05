@@ -1,4 +1,4 @@
-use std::{ops::Range, sync::Arc};
+use std::{ops::{Range, Deref}, sync::Arc};
 
 use crate::{
     diagnostic::{Diagnostic, Reporter},
@@ -6,7 +6,7 @@ use crate::{
     spanned_error,
 };
 
-use super::lex::{Punctuation, Token};
+use super::{lex::{Delimeter, Punctuation, Token}, token::{CloseBrace, CloseBracket, CloseParen, Gt, Lt, OpenBrace, OpenBracket, OpenParen}};
 
 pub struct Cursor<'a> {
     stream: &'a [Spanned<Token>],
@@ -294,3 +294,183 @@ macro_rules! punctuated {
         }
     }};
 }
+
+macro_rules! delimeterized {
+    ($name:literal, $struct:ident, $fn:ident, $open:ident, $close:ident, $open_inner:pat, $close_inner:pat, $error:literal) => {
+        #[derive(Debug, Clone, PartialEq)]
+        pub struct $struct<T> {
+            open: $open,
+            inner: T,
+            close: $close,
+        }
+
+        impl<T> $struct<T> {
+            pub fn inner(&self) -> &T {
+                &self.inner
+            }
+
+            pub fn into_inner(self) -> T {
+                self.inner
+            }
+        }
+
+        impl<T> Deref for $struct<T> {
+            type Target = T;
+
+            fn deref(&self) -> &T {
+                self.inner()
+            }
+        }
+
+        impl<T: Parsable> Parsable for Spanned<$struct<T>> {
+            fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+                let open: Spanned<$open> = cursor.parse()?;
+
+                let mut depth = 0;
+                let start = cursor.position;
+
+                for (i, tok) in (&cursor.stream[start..]).into_iter().enumerate() {
+                    cursor.position = start + i;
+                    match tok.inner() {
+                        $open_inner => depth += 1,
+                        $close_inner => {
+                            if depth == 0 {
+                                let close: Spanned<$close> = cursor.parse()?;
+                                let span = open.span().to(close.span());
+                                return Ok(Spanned::new(
+                                    $struct {
+                                        open: open.into_inner(),
+                                        inner: T::parse(&mut cursor.slice(start..i))?,
+                                        close: close.into_inner(),
+                                    },
+                                    span,
+                                ));
+                            }
+
+                            depth -= 1;
+                        }
+                        _ => {}
+                    }
+                }
+
+                Err(spanned_error!(
+                    open.into_span(),
+                    concat!("unmatched opening ", $name)
+                ))
+            }
+
+            fn description(&self) -> &'static str {
+                concat!($name, " expression")
+            }
+        }
+
+        impl<T: Parsable> Parsable for $struct<T> {
+            fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+                let open: Spanned<$open> = cursor.parse()?;
+
+                let mut depth = 0;
+                let start = cursor.position;
+
+                for (i, tok) in (&cursor.stream[start..]).into_iter().enumerate() {
+                    cursor.position = start + i;
+                    match tok.inner() {
+                        $open_inner => depth += 1,
+                        $close_inner => {
+                            if depth == 0 {
+                                let close: Spanned<$close> = cursor.parse()?;
+                                return Ok($struct {
+                                    open: open.into_inner(),
+                                    inner: T::parse(&mut cursor.slice(start..(start + i)))?,
+                                    close: close.into_inner(),
+                                });
+                            }
+
+                            depth -= 1;
+                        }
+                        _ => {}
+                    }
+                }
+
+                Err(spanned_error!(
+                    open.into_span(),
+                    concat!("unmatched opening ", $name)
+                ))
+            }
+
+            fn description(&self) -> &'static str {
+                concat!($name, " expression")
+            }
+        }
+
+        pub fn $fn<'a>(cursor: &'a mut Cursor) -> Result<$struct<Cursor<'a>>, Diagnostic> {
+            let open: Spanned<$open> = cursor.parse()?;
+            let start = cursor.position;
+            let mut depth = 0;
+
+            while !cursor.at_end() {
+                match cursor.peek().map(Spanned::inner) {
+                    Some($open_inner) => depth += 1,
+                    Some($close_inner) => {
+                        if depth == 0 {
+                            let close: Spanned<$close> = cursor.parse()?;
+                            return Ok($struct {
+                                open: open.into_inner(),
+                                inner: cursor.slice(start..cursor.position),
+                                close: close.into_inner(),
+                            });
+                        }
+                        depth -= 1;
+                    }
+                    _ => {}
+                }
+                cursor.position += 1;
+            }
+
+            Err(spanned_error!(
+                open.into_span(),
+                concat!("unmatched opening ", $error)
+            ))
+        }
+    };
+}
+
+delimeterized!(
+    "parenthesized",
+    Parenthesized,
+    parenthesized,
+    OpenParen,
+    CloseParen,
+    Token::Delimeter(Delimeter::OpenParen),
+    Token::Delimeter(Delimeter::CloseParen),
+    "parenthesis"
+);
+delimeterized!(
+    "bracketed",
+    Bracketed,
+    bracketed,
+    OpenBracket,
+    CloseBracket,
+    Token::Delimeter(Delimeter::OpenBracket),
+    Token::Delimeter(Delimeter::CloseBracket),
+    "bracket"
+);
+delimeterized!(
+    "braced",
+    Braced,
+    braced,
+    OpenBrace,
+    CloseBrace,
+    Token::Delimeter(Delimeter::OpenBrace),
+    Token::Delimeter(Delimeter::CloseBrace),
+    "brace"
+);
+delimeterized!(
+    "arrowed",
+    Arrowed,
+    arrowed,
+    Lt,
+    Gt,
+    Token::Punctuation(Punctuation::Lt),
+    Token::Punctuation(Punctuation::Gt),
+    "arrow"
+);
