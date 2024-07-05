@@ -59,7 +59,7 @@ impl Statement {
         }
     }
 
-    fn parse(cursor: &mut Cursor) -> Spanned<Statement> {
+    pub fn parse(cursor: &mut Cursor) -> Spanned<Statement> {
         let (tok, span) = inline_unwrap!(cursor, Option = cursor.next(), spanned_error!(cursor.eof_span(), "expected statemenet, found `EOF`"), Statement)
             .deconstruct();
 
@@ -530,6 +530,14 @@ impl Expr {
                         Expr::parse_factor,
                     );
                 }
+                Token::Keyword(Keyword::As) => {
+                    cursor.step();
+
+                    let ty: Spanned<Type> = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
+                    let as_span = a.span().to(ty.span());
+
+                    a = Spanned::new(Expr::As(Box::new(a), ty), as_span);
+                }
                 Token::Delimeter(Delimeter::OpenParen) => {
                     cursor.step();
 
@@ -635,6 +643,16 @@ impl Expr {
                 };
 
                 Spanned::new(Expr::Reference(path), span)
+            }
+            Token::Macro(Macro::Sizeof) => {
+                cursor.step();
+
+                let _: Token!["("] = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
+                let ty: Spanned<Type> = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
+                let _: Token![")"] = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
+
+                let span = span.to(ty.span());
+                Spanned::new(Expr::Sizeof(ty), span)
             }
             Token::Delimeter(Delimeter::OpenParen) => {
                 let a = Expr::parse_tuple(cursor);

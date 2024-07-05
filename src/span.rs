@@ -7,6 +7,8 @@ use std::{
 
 use colored::{Color, Colorize};
 
+use crate::info;
+
 #[derive(PartialEq, Clone)]
 pub struct Spanned<T> {
     inner: T,
@@ -232,6 +234,8 @@ impl Lookup {
     }
 
     pub fn lines(&self, span: Range<usize>) -> Range<usize> {
+        info!("{:?}", span).sync_emit();
+
         let start_line = self.line_n(span.start);
         let next_start = self.heads[start_line + 1];
 
