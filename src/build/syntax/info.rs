@@ -113,24 +113,42 @@ impl CompInfo {
     }
 
     fn parse_lib(tokens: &[Spanned<InfoToken>], eol_span: Span) -> Result<Spanned<Lib>, Diagnostic> {
-        let ident = match tokens.get(0) {
-            Some(Spanned {inner: InfoToken::Text(src), span}) => Spanned::new(src.clone(), span.clone()),
-            Some(Spanned {inner: tok, span}) => return Err(spanned_error!(span.clone(), "expected library identifier, found {}", tok.description())),
-            None => return Err(spanned_error!(eol_span, "expected library identifier, found `EOL`")),
-        };
-
-        match tokens.get(1) {
-            Some(Spanned {inner: InfoToken::Equal, span}) => (),
-            Some(Spanned {inner: tok, span}) => return Err(spanned_error!(span.clone(), "expected library identifier, found {}", tok.description())),
-            None => return Err(spanned_error!(eol_span, "expected library identifier, found `EOL`")),
-        };
+        let ident = expect_text(&eol_span, tokens.get(0))?;
+        expect_token(&InfoToken::Equal, &eol_span, tokens.get(1))?;
 
         match tokens.get(2) {
             Some(Spanned {inner: InfoToken::Git, span}) => {
+                expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3))?;
+                let mut url: Option<String> = None;
+                let mut commit: Option<String> = None;
+                let mut branch: Option<String> = None;
+
+                let mut i = 3;
+                while let Some(tok) = tokens.get(i) {
+                    if tok.inner() == &InfoToken::CloseParen {
+                        break;
+                    }
+
+                    let field = expect_text(&eol_span, Some(tok))?;
+                    expect_token(&InfoToken::Equal, &eol_span, tokens.get(i+1))?;
+                }
+
+                let url = match url {
+                    Some(u) => u,
+                    None => return Err(spanned_error!(span.clone(), "git sources require a `url` parameter")),
+                };
+
                 todo!()
             }
             Some(Spanned {inner: InfoToken::Path, span}) => {
-                todo!()
+                expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3))?;
+                let (path, span) = expect_text(&eol_span, tokens.get(4))?.deconstruct();
+                expect_token(&InfoToken::CloseParen, &eol_span, tokens.get(5))?;
+
+                let info_span = ident.span().to(&span);
+                Ok(Spanned::new(Lib {
+                    ident, src: Spanned::new(LibSrc::Path(path), span),
+                }, info_span))
             }
             Some(Spanned {inner: InfoToken::Text(url), span}) => {
                 let info_span = ident.span().to(span);
@@ -143,5 +161,26 @@ impl CompInfo {
             Some(tok) => return Err(spanned_error!(tok.span().clone(), "expected library source, found {}", tok.description())),
             None => return Err(spanned_error!(eol_span, "expected library source, found `EOL`")),
         }
+    }
+}
+
+fn expect_token(target: &InfoToken, eol_span: &Span, tok: Option<&Spanned<InfoToken>>) -> Result<Span, Diagnostic> {
+    match tok {
+        Some(Spanned {inner: tok, span}) => {
+            if tok == target {
+                Ok(span.clone())
+            } else {
+                Err(spanned_error!(span.clone(), "expected library identifier, found {}", tok.description()))
+            }
+        },
+        None => Err(spanned_error!(eol_span.clone(), "expected library identifier, found `EOL`")),
+    }
+}
+
+fn expect_text(eol_span: &Span, tok: Option<&Spanned<InfoToken>>) -> Result<Spanned<String>, Diagnostic> {
+    match tok {
+        Some(Spanned {inner: InfoToken::Text(txt), span}) => Ok(Spanned::new(txt.clone(), span.clone())),
+        Some(Spanned {inner: tok, span}) => return Err(spanned_error!(span.clone(), "expected library identifier, found {}", tok.description())),
+        None => return Err(spanned_error!(eol_span.clone(), "expected library identifier, found `EOL`")),
     }
 }
