@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    diagnostic::Diagnostic, error, info, span::{Lookup, Span, Spanned}, spanned_error
+    diagnostic::Diagnostic,
+    error, info,
+    span::{Lookup, Span, Spanned},
+    spanned_error,
 };
 
 use async_std::{
@@ -103,6 +106,7 @@ pub enum Token {
     #[token("fn", |_| Keyword::Fn)]
     #[token("return", |_| Keyword::Return)]
     #[token("pub", |_| Keyword::Pub)]
+    #[token("prot", |_| Keyword::Prot)]
     #[token("const", |_| Keyword::Const)]
     #[token("static", |_| Keyword::Static)]
     #[token("progmem", |_| Keyword::Progmem)]
@@ -309,6 +313,7 @@ pub enum Keyword {
     Fn,
     Return,
     Pub,
+    Prot,
     Const,
     Static,
     Progmem,
@@ -333,6 +338,7 @@ impl Keyword {
             Keyword::Fn => "keyword `fn`",
             Keyword::Return => "keyword `return`",
             Keyword::Pub => "keyword `pub`",
+            Keyword::Prot => "keyword `prot`",
             Keyword::Const => "keyword `const`",
             Keyword::Static => "keyword `static`",
             Keyword::Progmem => "keyword `progmem`",

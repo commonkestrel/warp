@@ -29,8 +29,6 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Build { input, output } => {
-            build::build(input, output).await
-        }
+        Command::Build { input, output } => build::build(input, output).await,
     }
 }

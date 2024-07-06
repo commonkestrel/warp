@@ -1,7 +1,10 @@
 use std::fmt;
 
 use lazy_regex::{regex, regex_replace_all};
-use oem_cp::{code_table::{DECODING_TABLE_CP737, ENCODING_TABLE_CP737}, decode_string_complete_table, encode_string_checked};
+use oem_cp::{
+    code_table::{DECODING_TABLE_CP737, ENCODING_TABLE_CP737},
+    decode_string_complete_table, encode_string_checked,
+};
 
 #[derive(Clone, PartialEq)]
 pub struct AsciiStr {
@@ -12,7 +15,7 @@ impl AsciiStr {
     const WHITESPACE: [u8; 3] = [0x00, 0x20, 0xFF];
 
     pub fn new(bytes: Vec<u8>) -> Self {
-        AsciiStr{inner: bytes}
+        AsciiStr { inner: bytes }
     }
 
     pub unsafe fn from_bytes_unchecked<T: Iterator<Item = u8>>(buf: T) -> Self {
@@ -26,18 +29,24 @@ impl AsciiStr {
     }
 
     pub fn trim(&self) -> Self {
-        match self.inner.iter().position(|byte| !AsciiStr::WHITESPACE.contains(byte)) {
+        match self
+            .inner
+            .iter()
+            .position(|byte| !AsciiStr::WHITESPACE.contains(byte))
+        {
             Some(i) => {
                 // SAFETY: if there is a non-whitespace character in `position`, there must be one found in `rposition`
-                let end = self.inner.iter().rposition(|byte| !AsciiStr::WHITESPACE.contains(byte)).unwrap();
+                let end = self
+                    .inner
+                    .iter()
+                    .rposition(|byte| !AsciiStr::WHITESPACE.contains(byte))
+                    .unwrap();
 
                 AsciiStr {
                     inner: self.inner[i..=end].to_vec(),
                 }
             }
-            None => AsciiStr {
-                inner: Vec::new(),
-            }
+            None => AsciiStr { inner: Vec::new() },
         }
     }
 }
@@ -138,7 +147,8 @@ pub fn unescape_str<'a>(s: &'a str) -> Result<AsciiStr, UnescapeError> {
         .replace("\\f", "\x0C")
         .replace("\\v", "\x0B");
 
-    let mut string = encode_string_checked(simple, &ENCODING_TABLE_CP737).ok_or(UnescapeError::InvalidAscii)?;
+    let mut string =
+        encode_string_checked(simple, &ENCODING_TABLE_CP737).ok_or(UnescapeError::InvalidAscii)?;
     string.push(0x00);
 
     Ok(AsciiStr::new(string))

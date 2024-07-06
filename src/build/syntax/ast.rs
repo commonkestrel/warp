@@ -1,8 +1,90 @@
-use crate::{build::ascii::AsciiStr, seek, span::{Span, Spanned}, spanned_debug, spanned_error, Token};
+use crate::{
+    build::ascii::AsciiStr,
+    seek,
+    span::{Span, Spanned},
+    spanned_debug, spanned_error, Token,
+};
 
 use super::{
-    lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token}, info::LibSrc, parse::{Cursor, Parenthesized, Parsable, Punctuated}, token::{Ident, LitString}
+    info::LibSrc,
+    lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token},
+    parse::{Cursor, Parenthesized, Parsable, Punctuated},
+    token::{Ident, LitString},
 };
+
+#[derive(Debug, Clone)]
+pub struct Const {
+    ident: Spanned<Ident>,
+    value: Spanned<Expr>,
+}
+
+impl Parsable for Spanned<Const> {
+    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let keyword: Spanned<Token![const]> = cursor.parse()?;
+        let ident: Spanned<Ident> = cursor.parse()?;
+        let _: Token![=] = cursor.parse()?;
+        let value = Expr::parse_assignment(cursor);
+
+        let const_span = keyword.span().to(value.span());
+        Ok(Spanned::new(Const { ident, value }, const_span))
+    }
+
+    fn description(&self) -> &'static str {
+        "constant"
+    }
+}
+
+pub struct Static {
+    ident: Spanned<Ident>,
+    ty: Spanned<Type>,
+    value: Spanned<Expr>,
+}
+
+impl Parsable for Spanned<Static> {
+    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let keyword: Spanned<Token![static]> = cursor.parse()?;
+        let ident: Spanned<Ident> = cursor.parse()?;
+
+        let _: Token![:] = cursor.parse()?;
+        let ty = Type::parse(cursor);
+
+        let _: Token![=] = cursor.parse()?;
+        let value = Expr::parse_assignment(cursor);
+
+        let static_span = keyword.span().to(value.span());
+        Ok(Spanned::new(Static { ident, ty, value }, static_span))
+    }
+
+    fn description(&self) -> &'static str {
+        "static variable"
+    }
+}
+
+pub struct Progmem {
+    ident: Spanned<Ident>,
+    ty: Spanned<Type>,
+    value: Spanned<Expr>,
+}
+
+impl Parsable for Spanned<Progmem> {
+    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let keyword: Spanned<Token![progmem]> = cursor.parse()?;
+        let ident: Spanned<Ident> = cursor.parse()?;
+
+        let _: Token![:] = cursor.parse()?;
+        let ty = Type::parse(cursor);
+
+        let _: Token![=] = cursor.parse()?;
+        let value = Expr::parse_assignment(cursor);
+
+        let static_span = keyword.span().to(value.span());
+        Ok(Spanned::new(Progmem { ident, ty, value }, static_span))
+    }
+
+    fn description(&self) -> &'static str {
+        "program memory variable"
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -17,7 +99,7 @@ impl Parsable for Spanned<Function> {
         let keyword: Spanned<Token![fn]> = cursor.parse()?;
         let ident = cursor.parse()?;
         let _: Token!["("] = cursor.parse()?;
-        
+
         let mut params_inner = Vec::new();
         let mut last_param = None;
 
@@ -28,13 +110,16 @@ impl Parsable for Spanned<Function> {
                     Some(param) => {
                         cursor.step();
                         params_inner.push((param, Token![,]))
-                    },
+                    }
                     None => {
-                        cursor.reporter().report_sync(spanned_error!(tok.span().clone(), "unexpected duplicate seperator"));
+                        cursor.reporter().report_sync(spanned_error!(
+                            tok.span().clone(),
+                            "unexpected duplicate seperator"
+                        ));
                         cursor.seek(&Token::Delimeter(Delimeter::CloseParen));
                         break;
                     }
-                }
+                },
                 _ => {
                     let param = match cursor.parse() {
                         Ok(param) => param,
@@ -58,14 +143,25 @@ impl Parsable for Spanned<Function> {
             cursor.step();
             Type::parse(cursor)
         } else {
-            cursor.reporter().report_sync(spanned_error!(close_paren.span().clone(), "missing return type"));
+            cursor.reporter().report_sync(spanned_error!(
+                close_paren.span().clone(),
+                "missing return type"
+            ));
             Spanned::new(Type::Err, close_paren.into_span())
         };
 
         let body = Statement::parse(cursor);
 
         let fn_span = keyword.span().to(body.span());
-        Ok(Spanned::new(Function {ident, parameters, return_type, body}, fn_span))
+        Ok(Spanned::new(
+            Function {
+                ident,
+                parameters,
+                return_type,
+                body,
+            },
+            fn_span,
+        ))
     }
 
     fn description(&self) -> &'static str {
@@ -86,37 +182,11 @@ impl Parsable for Spanned<Parameter> {
         let ty = Type::parse(cursor);
 
         let param_span = ident.span().to(ty.span());
-        Ok(Spanned::new(Parameter {ident, ty}, param_span))
+        Ok(Spanned::new(Parameter { ident, ty }, param_span))
     }
 
     fn description(&self) -> &'static str {
         "function parameter"
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Import {
-    paths: Vec<Path>
-}
-
-impl Parsable for Import {
-    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
-        let start: Spanned<PathStart> = cursor.parse()?;
-        let mut paths = Vec::new();
-        let mut current_path = Path {
-            start,
-            segments: Vec::new(),
-        };
-
-        while let Some(tok) = cursor.peek() {
-            
-        }
-
-        Ok(Import {paths})
-    }
-
-    fn description(&self) -> &'static str {
-        "`import` statement"
     }
 }
 
@@ -168,25 +238,37 @@ macro_rules! inline_unwrap {
 impl Statement {
     fn requires_semicolon(&self) -> bool {
         match self {
-            Statement::Expr(_) | Statement::Return(_) | Statement::Break | Statement::Continue | Statement::Asm(_) | Statement::Var{..} => true,
+            Statement::Expr(_)
+            | Statement::Return(_)
+            | Statement::Break
+            | Statement::Continue
+            | Statement::Asm(_)
+            | Statement::Var { .. } => true,
             _ => false,
         }
     }
 
     pub fn parse(cursor: &mut Cursor) -> Spanned<Statement> {
-        let (tok, span) = inline_unwrap!(Statement, cursor, Option = cursor.next(), spanned_error!(cursor.eof_span(), "expected statemenet, found `EOF`"))
-            .deconstruct();
+        let (tok, span) = inline_unwrap!(
+            Statement,
+            cursor,
+            Option = cursor.next(),
+            spanned_error!(cursor.eof_span(), "expected statemenet, found `EOF`")
+        )
+        .deconstruct();
 
         match tok {
             Token::Keyword(Keyword::If) => {
                 let condition = inline_unwrap!(Statement, cursor, Result = cursor.parse());
 
-                let content: Spanned<Statement> = inline_unwrap!(Statement, cursor, Result = cursor.parse());
+                let content: Spanned<Statement> =
+                    inline_unwrap!(Statement, cursor, Result = cursor.parse());
 
                 let (else_clause, if_span) = if cursor.check(&Token::Keyword(Keyword::Else)) {
-                    let else_clause: Spanned<Statement> = inline_unwrap!(Statement, cursor, Result = cursor.parse());
+                    let else_clause: Spanned<Statement> =
+                        inline_unwrap!(Statement, cursor, Result = cursor.parse());
                     let if_span = span.to(else_clause.span());
-                
+
                     (Some(Box::new(else_clause)), if_span)
                 } else {
                     (None, span.to(content.span()))
@@ -206,7 +288,7 @@ impl Statement {
                 let content = Statement::parse(cursor);
 
                 let for_span = span.to(content.span());
-                let for_loop = ForLoop{header, content};
+                let for_loop = ForLoop { header, content };
 
                 Spanned::new(Statement::For(Box::new(for_loop)), for_span)
             }
@@ -215,7 +297,7 @@ impl Statement {
                 let contents = Statement::parse(cursor);
 
                 let while_span = span.to(contents.span());
-                let while_loop = WhileLoop {check, contents};
+                let while_loop = WhileLoop { check, contents };
 
                 Spanned::new(Statement::While(Box::new(while_loop)), while_span)
             }
@@ -250,7 +332,9 @@ impl Statement {
                     Err(_) => {
                         cursor.step_back();
 
-                        cursor.reporter().report_sync(spanned_error!(span.clone(), "unmatched opening brace"));
+                        cursor
+                            .reporter()
+                            .report_sync(spanned_error!(span.clone(), "unmatched opening brace"));
                         return Spanned::new(Statement::Err, span);
                     }
                 };
@@ -259,12 +343,15 @@ impl Statement {
                 Spanned::new(Statement::Block(statements), block_span)
             }
             Token::Macro(Macro::Asm) => {
-                let string: Parenthesized<Spanned<LitString>> = inline_unwrap!(Statement, cursor, Result = cursor.parse());
+                let string: Parenthesized<Spanned<LitString>> =
+                    inline_unwrap!(Statement, cursor, Result = cursor.parse());
                 let asm_span = span.to(string.span());
 
                 Spanned::new(Statement::Asm(string), asm_span)
             }
-            Token::Keyword(Keyword::Let) => Statement::variable(cursor, span, Mutability::Immutable),
+            Token::Keyword(Keyword::Let) => {
+                Statement::variable(cursor, span, Mutability::Immutable)
+            }
             Token::Keyword(Keyword::Mut) => Statement::variable(cursor, span, Mutability::Mutable),
             _ => {
                 cursor.step_back();
@@ -275,7 +362,11 @@ impl Statement {
         }
     }
 
-    fn variable(cursor: &mut Cursor, keyword_span: Span, mutability: Mutability) -> Spanned<Statement> {
+    fn variable(
+        cursor: &mut Cursor,
+        keyword_span: Span,
+        mutability: Mutability,
+    ) -> Spanned<Statement> {
         let ident = inline_unwrap!(Statement, cursor, Result = cursor.parse());
 
         let ty = if cursor.check(&Token::Punctuation(Punctuation::Colon)) {
@@ -292,7 +383,15 @@ impl Statement {
         let assignment = Expr::parse_assignment(cursor);
 
         let var_span = keyword_span.to(assignment.span());
-        Spanned::new(Statement::Var{ mutability, ident, ty, assignment}, var_span)
+        Spanned::new(
+            Statement::Var {
+                mutability,
+                ident,
+                ty,
+                assignment,
+            },
+            var_span,
+        )
     }
 }
 
@@ -328,8 +427,8 @@ impl Parsable for ForHeader {
         cursor.expect_semicolon();
 
         let post = Statement::parse(cursor);
-        
-        Ok(ForHeader{init, check, post})
+
+        Ok(ForHeader { init, check, post })
     }
 
     fn description(&self) -> &'static str {
@@ -803,7 +902,7 @@ impl Expr {
 
                                 return Spanned::new(Expr::Err, tok.into_span());
                             }
-                        }
+                        },
                         _ => last_expr = Some(Expr::parse_assignment(cursor)),
                     }
                 }
@@ -813,9 +912,9 @@ impl Expr {
                 let close: Spanned<Token!["]"]> = match cursor.parse() {
                     Ok(close) => close,
                     Err(_) => {
-                        cursor.reporter().report_sync(spanned_error!(
-                            span.clone(), "unmatched opening bracket"
-                        ));
+                        cursor
+                            .reporter()
+                            .report_sync(spanned_error!(span.clone(), "unmatched opening bracket"));
 
                         return Spanned::new(Expr::Err, span);
                     }
@@ -1131,7 +1230,9 @@ impl Type {
                     let mut comma = true;
                     let mut types = Vec::new();
 
-                    while !cursor.check(&Token::Delimeter(Delimeter::CloseParen)) && !cursor.at_end() {
+                    while !cursor.check(&Token::Delimeter(Delimeter::CloseParen))
+                        && !cursor.at_end()
+                    {
                         if !comma {
                             // We can unwrap here since we are already checking if the cursor has more tokens
                             let (next_tok, next_span) = cursor.next().unwrap().deconstruct();
@@ -1170,7 +1271,7 @@ impl Type {
                 }
                 Token::Keyword(Keyword::Fn) => {
                     let _: Token!["("] = inline_unwrap!(Type, cursor, Result = cursor.parse());
-                    
+
                     let mut params_inner = Vec::new();
                     let mut last_param = None;
 
@@ -1194,7 +1295,7 @@ impl Type {
                             _ => {
                                 cursor.step_back();
                                 last_param = Some(Type::parse(cursor))
-                            },
+                            }
                         }
                     }
 
@@ -1203,7 +1304,13 @@ impl Type {
                     let return_type = Type::parse(cursor);
 
                     let ty_span = tok.span().to(return_type.span());
-                    Spanned::new(Type::Fn { parameters, return_type: Box::new(return_type) }, ty_span)
+                    Spanned::new(
+                        Type::Fn {
+                            parameters,
+                            return_type: Box::new(return_type),
+                        },
+                        ty_span,
+                    )
                 }
                 other => {
                     cursor.step_back();

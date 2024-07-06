@@ -1,25 +1,134 @@
-use std::{ops::{Range, Deref}, sync::Arc};
+use std::{
+    ops::{Deref, Range},
+    sync::Arc,
+};
+
+use async_std::path::PathBuf;
 
 use crate::{
+    build::syntax::{info::CompInfo, lex::Keyword},
     diagnostic::{Diagnostic, Reporter},
     span::{Lookup, Span, Spanned},
     spanned_error,
 };
 
-use super::{ast::Function, info::LibSrc, lex::{Delimeter, Punctuation, Token}, token::{CloseBrace, CloseBracket, CloseParen, Gt, Lt, OpenBrace, OpenBracket, OpenParen}};
+use super::{
+    ast::{Const, Function, Path, Progmem, Static},
+    info::{Lib, LibSrc},
+    lex::{Delimeter, Punctuation, Token},
+    token::{CloseBrace, CloseBracket, CloseParen, Gt, Lt, OpenBrace, OpenBracket, OpenParen},
+};
 
-pub fn parse(stream: &[Spanned<Token>], source_name: Arc<String>, lookup: Arc<Lookup>, reporter: Reporter) -> Result<Namespace, Reporter> {
+pub async fn parse(
+    stream: &[Spanned<Token>],
+    source_name: Arc<String>,
+    lookup: Arc<Lookup>,
+    reporter: Reporter,
+    subdir: PathBuf,
+) -> Result<Namespace, Reporter> {
     let mut cursor = Cursor::new(stream, source_name, lookup, reporter);
+    let mut namespace = Namespace::new(subdir);
+    let mut visibility = Visibility::Private;
 
+    while let Some(tok) = cursor.peek() {
+        match tok.inner() {
+            Token::Keyword(Keyword::Fn) => {
+                match cursor.parse() {
+                    Ok(func) => {
+                        namespace.functions.push((func, visibility));
+                        visibility = Visibility::Private;
+                    },
+                    Err(err) => {
+                        cursor.reporter().report(err).await;
+                        continue;
+                    }
+                }
+            }
+            Token::Keyword(Keyword::Import) => {}
+            Token::Keyword(Keyword::Const) => {}
+            Token::Keyword(Keyword::Static) => {}
+            Token::Keyword(Keyword::Progmem) => {
+                match cursor.parse() {
+                    Ok(var) => namespace.progmems.push((var, visibility)),
+                    Err(err) => {
+                        cursor.reporter().report(err).await;
+                        cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
+                    }
+                }
 
+                cursor.expect_semicolon();
+                visibility = Visibility::Private;
+            }
+            Token::Keyword(Keyword::Prot) => {
+                match visibility {
+                    Visibility::Public | Visibility::Protected => cursor.reporter().report(spanned_error!(tok.span().clone(), "duplicate visibility modifier")).await,
+                    Visibility::Private => visibility = Visibility::Protected,
+                }
+
+                cursor.step();
+            }
+            Token::Keyword(Keyword::Pub) => {
+                match visibility {
+                    Visibility::Public | Visibility::Protected => cursor.reporter().report(spanned_error!(tok.span().clone(), "duplicate visibility modifier")).await,
+                    Visibility::Private => visibility = Visibility::Private,
+                }
+
+                cursor.step();
+            }
+            Token::CompInfo(info) => {
+                if matches!(visibility, Visibility::Public | Visibility::Protected) {
+                    cursor.reporter().report(spanned_error!(tok.span().clone(), "compiler info cannot contain visibility modifiers")).await;
+                    cursor.step();
+                    continue;
+                }
+
+                match CompInfo::parse(Spanned::new(info.clone(), tok.span().clone()), cursor.reporter()) {
+                    CompInfo::Lib(lib) => namespace.lib_imports.push(lib),
+                    CompInfo::Err => {}
+                }
+            }
+            _ => {
+                cursor
+                    .reporter()
+                    .report(
+                        spanned_error!(
+                            tok.span().clone(),
+                            "unexpected token {}",
+                            tok.description()
+                        )
+                        .with_note("instructions are not allowed in the top-level section"),
+                    )
+                    .await;
+                cursor.step();
+            }
+        }
+    }
 
     todo!()
 }
 
 pub struct Namespace {
-    pub lib_imports: Vec<LibSrc>,
-    pub functions: Vec<(Function, Visibility)>,
+    pub subdir: PathBuf,
+    pub lib_imports: Vec<Lib>,
+    pub functions: Vec<(Spanned<Function>, Visibility)>,
+    pub imports: Vec<(Spanned<Path>, Visibility)>,
+    pub constants: Vec<(Spanned<Const>, Visibility)>,
+    pub statics: Vec<(Spanned<Static>, Visibility)>,
+    pub progmems: Vec<(Spanned<Progmem>, Visibility)>,
+}
 
+impl Namespace {
+    fn new(subdir: PathBuf) -> Namespace {
+        Namespace {
+            subdir,
+            lib_imports: Vec::new(),
+            functions: Vec::new(),
+            imports: Vec::new(),
+            constants: Vec::new(),
+            statics: Vec::new(),
+            progmems: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
