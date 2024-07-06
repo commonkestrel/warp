@@ -34,6 +34,7 @@ impl Parsable for Spanned<Const> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Static {
     ident: Spanned<Ident>,
     ty: Spanned<Type>,
@@ -60,6 +61,7 @@ impl Parsable for Spanned<Static> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Progmem {
     ident: Spanned<Ident>,
     ty: Spanned<Type>,
@@ -371,11 +373,8 @@ impl Statement {
 
         let ty = if cursor.check(&Token::Punctuation(Punctuation::Colon)) {
             cursor.step();
-            let ty = Type::parse(cursor);
-
-            Some(ty)
+            Some(Type::parse(cursor))
         } else {
-            println!("untyped variable");
             None
         };
 
@@ -1191,6 +1190,7 @@ pub enum Type {
         ty: Box<Spanned<Type>>,
     },
     Tuple(Vec<Spanned<Type>>),
+    Array (Box<Spanned<Type>>),
     Fn {
         parameters: Punctuated<Spanned<Type>, Token![,]>,
         return_type: Box<Spanned<Type>>,
@@ -1223,6 +1223,13 @@ impl Type {
                         },
                         span,
                     )
+                }
+                Token::Delimeter(Delimeter::OpenBrace) => {
+                    let ty = Type::parse(cursor);
+                    let close: Spanned<Token!["]"]> = inline_unwrap!(Type, cursor, Result = cursor.parse());
+
+                    let span = tok.span().to(close.span());
+                    Spanned::new(Type::Array(Box::new(ty)), span)
                 }
                 Token::Delimeter(Delimeter::OpenParen) => {
                     let start = tok.into_span();

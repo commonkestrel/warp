@@ -1,8 +1,8 @@
-use std::{path::PathBuf, process::ExitCode};
+use std::{env, path::PathBuf, process::ExitCode};
 
 use async_std::{fs::File, io::WriteExt};
 use clio::{Input, Output};
-use syntax::{ast::Function, info::CompInfo, lex::Token, parse::Cursor};
+use syntax::{ast::Function, info::CompInfo, lex::Token, parse::{parse, Cursor}};
 
 use crate::{diagnostic::Reporter, error, span::Spanned};
 
@@ -23,7 +23,7 @@ mod symbol_table;
 
 pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
     let file_name = input.to_string_lossy().into_owned();
-    let file = match File::open(input).await {
+    let file = match File::open(&input).await {
         Ok(file) => file,
         Err(err) => {
             error!("unable to open input file: {}", err).emit().await;
@@ -42,37 +42,50 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
         }
     };
 
-    let mut cursor = Cursor::new(&lexed.stream, lexed.source, lexed.lookup, Reporter::new());
-
-    if let Some(Spanned {
-        inner: Token::CompInfo(string),
-        span,
-    }) = cursor.next()
-    {
-        let info = CompInfo::parse(Spanned::new(string, span), cursor.reporter());
-
-        if cursor.reporter().has_errors() {
-            cursor.reporter().emit_all().await;
-
-            return ExitCode::FAILURE;
-        }
-
-        match File::create(output).await {
-            Ok(mut file) => match write!(file, "{:#?}", info).await {
-                Ok(_) => return ExitCode::SUCCESS,
-                Err(err) => {
-                    error!("unable to write to output file: {}", err)
-                        .emit()
-                        .await;
-                    return ExitCode::FAILURE;
+    let root_dir = match input.parent() {
+        Some(parent) => {
+            if parent.as_os_str().is_empty() || parent.starts_with(".") {
+                match env::current_dir() {
+                    Ok(cwd) => cwd,
+                    Err(err) => {
+                        error!("unable to get the current working directory: {err}").emit().await;
+                        return ExitCode::FAILURE;
+                    }
                 }
-            },
+            } else {
+                parent.to_path_buf()
+            }
+        }
+        None => match env::current_dir() {
+            Ok(cwd) => cwd,
             Err(err) => {
-                error!("unable to create output file: {}", err).emit().await;
+                error!("unable to get the current working directory: {err}").emit().await;
                 return ExitCode::FAILURE;
             }
         }
-    }
+    };
 
-    ExitCode::SUCCESS
+    let namespace = match parse(&lexed.stream, lexed.source, lexed.lookup, Reporter::new(), root_dir.into()).await {
+        Ok(namespace) => namespace,
+        Err(reporter) => {
+            reporter.emit_all().await;
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match File::create(output).await {
+        Ok(mut file) => match write!(file, "{:#?}", namespace).await {
+            Ok(_) => return ExitCode::SUCCESS,
+            Err(err) => {
+                error!("unable to write to output file: {}", err)
+                    .emit()
+                    .await;
+                return ExitCode::FAILURE;
+            }
+        },
+        Err(err) => {
+            error!("unable to create output file: {}", err).emit().await;
+            return ExitCode::FAILURE;
+        }
+    }
 }
