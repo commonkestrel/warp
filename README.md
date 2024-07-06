@@ -6,3 +6,5 @@ Warp is a programming language designed to compile to [fateful assembly](https:/
 in order to control the f8ful CPU.
 Warp combines the syntax of Rust with the simplicity of C.
 There are no complex types, allowing type checking without the overhead of type resolution.
+
+More information can be found in [Spec.md](./Spec.md)
