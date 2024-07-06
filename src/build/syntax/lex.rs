@@ -196,7 +196,7 @@ pub enum Token {
     #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", Token::ident)]
     Ident(SymbolRef),
 
-    #[regex(r"//![^\n]*", |lex| lex.slice().to_owned())]
+    #[regex(r"//![^\n]*", |lex| lex.slice()[3..].to_owned())]
     CompInfo(String),
 }
 

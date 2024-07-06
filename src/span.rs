@@ -11,8 +11,8 @@ use crate::info;
 
 #[derive(PartialEq, Clone)]
 pub struct Spanned<T> {
-    inner: T,
-    span: Span,
+    pub inner: T,
+    pub span: Span,
 }
 
 impl<T> Spanned<T> {

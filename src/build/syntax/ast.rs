@@ -1,7 +1,7 @@
 use crate::{build::ascii::AsciiStr, seek, span::{Span, Spanned}, spanned_debug, spanned_error, Token};
 
 use super::{
-    lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token}, lib::LibSrc, parse::{Cursor, Parenthesized, Parsable, Punctuated}, token::{Ident, LitString}
+    lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token}, info::LibSrc, parse::{Cursor, Parenthesized, Parsable, Punctuated}, token::{Ident, LitString}
 };
 
 pub struct Namespace {
