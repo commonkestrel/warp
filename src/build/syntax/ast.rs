@@ -1,19 +1,31 @@
 use crate::{build::ascii::AsciiStr, seek, span::{Span, Spanned}, spanned_debug, spanned_error, Token};
 
 use super::{
-    lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token},
-    parse::{Cursor, Parenthesized, Parsable, Punctuated},
-    token::{Ident, LitString},
+    lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token}, lib::LibSrc, parse::{Cursor, Parenthesized, Parsable, Punctuated}, token::{Ident, LitString}
 };
 
-pub struct FnDef {
+pub struct Namespace {
+    pub lib_imports: Vec<LibSrc>,
+    pub functions: Vec<(Function, Visibility)>,
+
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Private,
+    Protected,
+    Public,
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
     ident: Spanned<Ident>,
     parameters: Punctuated<Spanned<Parameter>, Token![,]>,
     return_type: Spanned<Type>,
     body: Spanned<Statement>,
 }
 
-impl Parsable for Spanned<FnDef> {
+impl Parsable for Spanned<Function> {
     fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
         let keyword: Spanned<Token![fn]> = cursor.parse()?;
         let ident = cursor.parse()?;
@@ -66,7 +78,7 @@ impl Parsable for Spanned<FnDef> {
         let body = Statement::parse(cursor);
 
         let fn_span = keyword.span().to(body.span());
-        Ok(Spanned::new(FnDef {ident, parameters, return_type, body}, fn_span))
+        Ok(Spanned::new(Function {ident, parameters, return_type, body}, fn_span))
     }
 
     fn description(&self) -> &'static str {
@@ -74,13 +86,7 @@ impl Parsable for Spanned<FnDef> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Visibility {
-    Private,
-    Protected,
-    Public,
-}
-
+#[derive(Debug, Clone)]
 pub struct Parameter {
     ident: Spanned<Ident>,
     ty: Spanned<Type>,
@@ -88,7 +94,12 @@ pub struct Parameter {
 
 impl Parsable for Spanned<Parameter> {
     fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
-        todo!()
+        let ident: Spanned<Ident> = cursor.parse()?;
+        let _: Token![:] = cursor.parse()?;
+        let ty = Type::parse(cursor);
+
+        let param_span = ident.span().to(ty.span());
+        Ok(Spanned::new(Parameter {ident, ty}, param_span))
     }
 
     fn description(&self) -> &'static str {
@@ -257,8 +268,6 @@ impl Statement {
         let ty = if cursor.check(&Token::Punctuation(Punctuation::Colon)) {
             cursor.step();
             let ty = Type::parse(cursor);
-
-            spanned_debug!(ty.span().clone(), "typed variable").sync_emit();
 
             Some(ty)
         } else {

@@ -1195,7 +1195,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "warp-cli"
+name = "warp-compiler"
 version = "0.1.0"
 dependencies = [
  "async-std",

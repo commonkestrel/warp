@@ -2,9 +2,9 @@ use std::{path::PathBuf, process::ExitCode};
 
 use async_std::{ io::WriteExt, fs::File };
 use clio::{Input, Output};
-use syntax::parse::Cursor;
+use syntax::{ast::Function, parse::Cursor};
 
-use crate::{diagnostic::Reporter, error};
+use crate::{diagnostic::Reporter, error, span::Spanned};
 
 mod frontend {
     pub mod uncaught_error;
@@ -13,6 +13,7 @@ mod frontend {
 mod syntax {
     pub mod ast;
     pub mod lex;
+    pub mod lib;
     pub mod parse;
     pub mod token;
 }
@@ -43,7 +44,14 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
 
     let mut cursor = Cursor::new(&lexed.stream, lexed.source, lexed.lookup, Reporter::new());
 
-    let statement = syntax::ast::Statement::parse(&mut cursor);
+    let func: Spanned<Function> = match cursor.parse() {
+        Ok(func) => func,
+        Err(err) => {
+            err.emit().await;
+            cursor.reporter().emit_all().await;
+            return ExitCode::FAILURE;
+        }
+    };
 
     if cursor.reporter().has_errors() {
         cursor.reporter().emit_all().await;
@@ -53,7 +61,7 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
     
     match File::create(output).await {
         Ok(mut file) => {
-            match write!(file, "{:#?}", statement).await {
+            match write!(file, "{:#?}", func).await {
                 Ok(_) => ExitCode::SUCCESS,
                 Err(err) => {
                     error!("unable to write to output file: {}", err).emit().await;

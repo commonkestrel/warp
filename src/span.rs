@@ -234,8 +234,6 @@ impl Lookup {
     }
 
     pub fn lines(&self, span: Range<usize>) -> Range<usize> {
-        info!("{:?}", span).sync_emit();
-
         let start_line = self.line_n(span.start);
         let next_start = *self.heads.get(start_line + 1).unwrap_or(&self.source.len());
 

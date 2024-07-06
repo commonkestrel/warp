@@ -47,8 +47,6 @@ pub async fn lex(source: String, content: File) -> Result<LexResult, Errors> {
     let mut lex = Token::lexer(&file);
 
     while let Some(tok) = lex.next() {
-        info!("slice: {}, span: {:?}", lex.slice(), lex.span()).sync_emit();
-
         let s = Span::new(source.clone(), lookup.clone(), lex.span());
 
         match tok {
@@ -197,6 +195,9 @@ pub enum Token {
 
     #[regex(r"[_a-zA-Z][_a-zA-Z0-9]*", Token::ident)]
     Ident(SymbolRef),
+
+    #[regex(r"//![^\n]*", |lex| lex.slice().to_owned())]
+    CompInfo(String),
 }
 
 impl Token {
@@ -208,6 +209,7 @@ impl Token {
             TI::Immediate(_) => "integer",
             TI::String(_) => "string",
             TI::Ident(_) => "identifier",
+            TI::CompInfo(_) => "compiler info",
             TI::Delimeter(del) => del.description(),
             TI::Keyword(key) => key.description(),
             TI::Macro(mac) => mac.description(),
@@ -237,7 +239,6 @@ impl Token {
 
     fn char(lex: &mut Lexer<Token>) -> Result<i128, Diagnostic> {
         let slice = lex.slice();
-        info!("char: {slice}; success: {:?}", Self::char_from_str(slice)).sync_emit();
         Self::char_from_str(slice).map(|c| c.into())
     }
 
