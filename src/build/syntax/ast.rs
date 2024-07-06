@@ -4,19 +4,6 @@ use super::{
     lex::{Delimeter, Keyword, Macro, Primitive, Punctuation, Token}, info::LibSrc, parse::{Cursor, Parenthesized, Parsable, Punctuated}, token::{Ident, LitString}
 };
 
-pub struct Namespace {
-    pub lib_imports: Vec<LibSrc>,
-    pub functions: Vec<(Function, Visibility)>,
-
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Visibility {
-    Private,
-    Protected,
-    Public,
-}
-
 #[derive(Debug, Clone)]
 pub struct Function {
     ident: Spanned<Ident>,
@@ -104,6 +91,32 @@ impl Parsable for Spanned<Parameter> {
 
     fn description(&self) -> &'static str {
         "function parameter"
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Import {
+    paths: Vec<Path>
+}
+
+impl Parsable for Import {
+    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let start: Spanned<PathStart> = cursor.parse()?;
+        let mut paths = Vec::new();
+        let mut current_path = Path {
+            start,
+            segments: Vec::new(),
+        };
+
+        while let Some(tok) = cursor.peek() {
+            
+        }
+
+        Ok(Import {paths})
+    }
+
+    fn description(&self) -> &'static str {
+        "`import` statement"
     }
 }
 
@@ -911,32 +924,7 @@ impl Parsable for Spanned<Path> {
     fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
         let peek = cursor.peek();
 
-        let start = match peek.map(Spanned::inner) {
-            Some(Token::Ident(id)) => {
-                let ident = Ident { symbol: *id };
-                Spanned::new(PathStart::Ident(ident), peek.unwrap().span().clone())
-            }
-            Some(Token::Keyword(Keyword::Super)) => {
-                Spanned::new(PathStart::Super, peek.unwrap().span().clone())
-            }
-            Some(Token::Keyword(Keyword::Root)) => {
-                Spanned::new(PathStart::Root, peek.unwrap().span().clone())
-            }
-            Some(tok) => {
-                return Err(spanned_error!(
-                    peek.unwrap().span().clone(),
-                    "expected path, found {}",
-                    tok.description()
-                ))
-            }
-            None => {
-                return Err(spanned_error!(
-                    cursor.eof_span(),
-                    "expected path, found `EOF`"
-                ))
-            }
-        };
-        cursor.step();
+        let start: Spanned<PathStart> = cursor.parse()?;
 
         let mut segments: Vec<Spanned<Ident>> = Vec::new();
 
@@ -992,6 +980,46 @@ pub enum PathStart {
     Ident(Ident),
     Super,
     Root,
+}
+
+impl Parsable for Spanned<PathStart> {
+    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let peek = cursor.peek();
+
+        let start = match peek.map(Spanned::inner) {
+            Some(Token::Ident(id)) => {
+                let ident = Ident { symbol: *id };
+                Spanned::new(PathStart::Ident(ident), peek.unwrap().span().clone())
+            }
+            Some(Token::Keyword(Keyword::Super)) => {
+                Spanned::new(PathStart::Super, peek.unwrap().span().clone())
+            }
+            Some(Token::Keyword(Keyword::Root)) => {
+                Spanned::new(PathStart::Root, peek.unwrap().span().clone())
+            }
+            Some(tok) => {
+                return Err(spanned_error!(
+                    peek.unwrap().span().clone(),
+                    "expected path, found {}",
+                    tok.description()
+                ))
+            }
+            None => {
+                return Err(spanned_error!(
+                    cursor.eof_span(),
+                    "expected path, found `EOF`"
+                ))
+            }
+        };
+
+        cursor.step();
+
+        Ok(start)
+    }
+
+    fn description(&self) -> &'static str {
+        "path start"
+    }
 }
 
 #[derive(Debug, Clone)]

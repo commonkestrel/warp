@@ -112,19 +112,19 @@ Instead of a package file, such as `Cargo.toml` or `go.mod`,
 packages are imported through comments.
 For example, Warp's standard library is imported like so:
 ``` rs
-//! std = https://github.com/commonkestrel/warp-std
+//! lib std = https://github.com/commonkestrel/warp-std
 ```
 The Warp compiler will cache the git repository and include it as a package for your file.
 
 While by default the HEAD branch (`main`, `master`, `trunk`, etc...) and the most recent commit is used,
 you can specify these values like so:
 ```rs
-//! std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 5a6bb6d)
+//! lib std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 5a6bb6d)
 ```
 
 You are also able to import local packages via that `path` argument:
 ```rs
-//! std = path(./my-standard)
+//! lib std = path(./my-standard)
 ```
 
 All of this allows projects to be completely stored within a single file.

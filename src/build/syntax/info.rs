@@ -1,8 +1,6 @@
 use logos::Logos;
 
-use crate::{debug, diagnostic::{Diagnostic, Reporter}, span::{Span, Spanned}, spanned_error};
-
-use super::token::LitString;
+use crate::{diagnostic::{Diagnostic, Reporter}, span::{Span, Spanned}, spanned_error};
 
 #[derive(Debug, Clone)]
 pub enum CompInfo {
@@ -43,7 +41,9 @@ enum InfoToken {
     CloseParen,
     #[token("=")]
     Equal,
-    #[regex(r"[\x21-\x27\x2A-\x3C\x3E-\x7F]+", |lex| lex.slice().to_owned())]
+    #[token(",")]
+    Comma,
+    #[regex(r"[\x21-\x27\x2A-\x2B\x2D-\x3C\x3E-\x7F]+", |lex| lex.slice().to_owned())]
     Text(String),
 }
 
@@ -56,6 +56,7 @@ impl InfoToken {
             InfoToken::OpenParen => "`(`",
             InfoToken::CloseParen => "`)`",
             InfoToken::Equal => "`=`",
+            InfoToken::Comma => "`,`",
             InfoToken::Text(_) => "text",
         }
     }
@@ -70,7 +71,7 @@ impl CompInfo {
         let global_span = source.span();
 
         while let Some(tok) = lex.next() {
-            let location = (global_span.start() + lex.span().start)..(global_span.start() + lex.span().end);
+            let location = (global_span.start() + lex.span().start + 3)..(global_span.start() + lex.span().end + 3);
             let s = global_span.clone().with_location(location);
 
             match tok {
@@ -123,22 +124,54 @@ impl CompInfo {
                 let mut commit: Option<String> = None;
                 let mut branch: Option<String> = None;
 
-                let mut i = 3;
+                let mut i = 4;
+                let mut comma = true;
                 while let Some(tok) = tokens.get(i) {
                     if tok.inner() == &InfoToken::CloseParen {
                         break;
                     }
 
+                    if !comma {
+                        return Err(spanned_error!(tok.span().clone(), "missing seperator").with_note("consider adding `,` here"));
+                    }
+
                     let field = expect_text(&eol_span, Some(tok))?;
                     expect_token(&InfoToken::Equal, &eol_span, tokens.get(i+1))?;
+                    let value = expect_text(&eol_span, tokens.get(i+2))?;
+                    if let Some(InfoToken::Comma) = tokens.get(i+3).map(Spanned::inner) {
+                        comma = true;
+                        i += 4;
+                    } else {
+                        comma = false;
+                        i += 3;
+                    }
+
+                    match field.inner().as_str() {
+                        "url" => url = Some(value.into_inner()),
+                        "commit" => commit = Some(value.into_inner()),
+                        "branch" => branch = Some(value.into_inner()),
+                        _ => {
+                            let (description, span) = field.deconstruct();
+                            return Err(spanned_error!(span, "unknown field {description}"))
+                        }
+                    }
                 }
+
+                let close = expect_token(&InfoToken::CloseParen, &eol_span, tokens.get(i))?;
 
                 let url = match url {
                     Some(u) => u,
                     None => return Err(spanned_error!(span.clone(), "git sources require a `url` parameter")),
                 };
 
-                todo!()
+                let info_span = ident.span().to(&close);
+                let src_span = span.to(&close);
+
+                Ok(Spanned::new(Lib {
+                    ident, src: Spanned::new(LibSrc::Git {
+                        url, commit, branch,
+                    }, src_span)
+                }, info_span))
             }
             Some(Spanned {inner: InfoToken::Path, span}) => {
                 expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3))?;
@@ -170,17 +203,17 @@ fn expect_token(target: &InfoToken, eol_span: &Span, tok: Option<&Spanned<InfoTo
             if tok == target {
                 Ok(span.clone())
             } else {
-                Err(spanned_error!(span.clone(), "expected library identifier, found {}", tok.description()))
+                Err(spanned_error!(span.clone(), "expected {}, found {}", target.description(), tok.description()))
             }
         },
-        None => Err(spanned_error!(eol_span.clone(), "expected library identifier, found `EOL`")),
+        None => Err(spanned_error!(eol_span.clone(), "expected {}, found `EOL`", target.description())),
     }
 }
 
 fn expect_text(eol_span: &Span, tok: Option<&Spanned<InfoToken>>) -> Result<Spanned<String>, Diagnostic> {
     match tok {
         Some(Spanned {inner: InfoToken::Text(txt), span}) => Ok(Spanned::new(txt.clone(), span.clone())),
-        Some(Spanned {inner: tok, span}) => return Err(spanned_error!(span.clone(), "expected library identifier, found {}", tok.description())),
-        None => return Err(spanned_error!(eol_span.clone(), "expected library identifier, found `EOL`")),
+        Some(Spanned {inner: tok, span}) => return Err(spanned_error!(span.clone(), "expected text, found {}", tok.description())),
+        None => return Err(spanned_error!(eol_span.clone(), "expected text, found `EOL`")),
     }
 }

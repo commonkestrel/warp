@@ -6,7 +6,28 @@ use crate::{
     spanned_error,
 };
 
-use super::{lex::{Delimeter, Punctuation, Token}, token::{CloseBrace, CloseBracket, CloseParen, Gt, Lt, OpenBrace, OpenBracket, OpenParen}};
+use super::{ast::Function, info::LibSrc, lex::{Delimeter, Punctuation, Token}, token::{CloseBrace, CloseBracket, CloseParen, Gt, Lt, OpenBrace, OpenBracket, OpenParen}};
+
+pub fn parse(stream: &[Spanned<Token>], source_name: Arc<String>, lookup: Arc<Lookup>, reporter: Reporter) -> Result<Namespace, Reporter> {
+    let mut cursor = Cursor::new(stream, source_name, lookup, reporter);
+
+
+
+    todo!()
+}
+
+pub struct Namespace {
+    pub lib_imports: Vec<LibSrc>,
+    pub functions: Vec<(Function, Visibility)>,
+
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Private,
+    Protected,
+    Public,
+}
 
 pub struct Cursor<'a> {
     stream: &'a [Spanned<Token>],
