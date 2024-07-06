@@ -1,7 +1,7 @@
 use std::fmt;
 
 use lazy_regex::{regex, regex_replace_all};
-use oem_cp::{code_table::ENCODING_TABLE_CP737, encode_string_checked};
+use oem_cp::{code_table::{DECODING_TABLE_CP737, ENCODING_TABLE_CP737}, decode_string_complete_table, encode_string_checked};
 
 #[derive(Clone, PartialEq)]
 pub struct AsciiStr {
@@ -9,6 +9,8 @@ pub struct AsciiStr {
 }
 
 impl AsciiStr {
+    const WHITESPACE: [u8; 3] = [0x00, 0x20, 0xFF];
+
     pub fn new(bytes: Vec<u8>) -> Self {
         AsciiStr{inner: bytes}
     }
@@ -21,6 +23,22 @@ impl AsciiStr {
 
     pub fn into_bytes(self) -> Vec<u8> {
         self.inner
+    }
+
+    pub fn trim(&self) -> Self {
+        match self.inner.iter().position(|byte| !AsciiStr::WHITESPACE.contains(byte)) {
+            Some(i) => {
+                // SAFETY: if there is a non-whitespace character in `position`, there must be one found in `rposition`
+                let end = self.inner.iter().rposition(|byte| !AsciiStr::WHITESPACE.contains(byte)).unwrap();
+
+                AsciiStr {
+                    inner: self.inner[i..=end].to_vec(),
+                }
+            }
+            None => AsciiStr {
+                inner: Vec::new(),
+            }
+        }
     }
 }
 
@@ -41,7 +59,7 @@ impl TryFrom<String> for AsciiStr {
 impl std::fmt::Debug for AsciiStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "\"{}\"", unsafe {
-            std::str::from_utf8_unchecked(&self.inner)
+            decode_string_complete_table(&self.inner, &DECODING_TABLE_CP737)
         })
     }
 }
@@ -49,20 +67,20 @@ impl std::fmt::Debug for AsciiStr {
 impl fmt::Display for AsciiStr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", unsafe {
-            std::str::from_utf8_unchecked(&self.inner)
+            decode_string_complete_table(&self.inner, &DECODING_TABLE_CP737)
         })
     }
 }
 
 impl PartialEq<str> for AsciiStr {
     fn eq(&self, other: &str) -> bool {
-        unsafe { std::str::from_utf8_unchecked(&self.inner) == other }
+        decode_string_complete_table(&self.inner, &DECODING_TABLE_CP737) == other
     }
 }
 
 impl PartialEq<&str> for AsciiStr {
     fn eq(&self, other: &&str) -> bool {
-        unsafe { std::str::from_utf8_unchecked(&self.inner) == *other }
+        decode_string_complete_table(&self.inner, &DECODING_TABLE_CP737) == *other
     }
 }
 

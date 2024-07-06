@@ -111,8 +111,17 @@ impl Span {
         }
     }
 
+    pub fn start(&self) -> usize {
+        return self.location.start;
+    }
+
     pub fn end(&self) -> usize {
         return self.location.end;
+    }
+
+    pub fn with_location(mut self, location: Range<usize>) -> Self {
+        self.location = location;
+        self
     }
 
     pub fn source_name(&self) -> Arc<String> {
