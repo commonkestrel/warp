@@ -6,6 +6,26 @@ use super::{
     token::{Ident, LitString},
 };
 
+pub struct FnDef {
+    visibility: Visibility,
+    ident: Spanned<Ident>,
+    parameters: Punctuated<Spanned<Parameter>, Token![,]>,
+    return_type: Spanned<Type>,
+    body: Spanned<Statement>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Private,
+    Protected,
+    Public,
+}
+
+pub struct Parameter {
+    ident: Spanned<Ident>,
+    ty: Spanned<Type>,
+}
+
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expr(Expr),
@@ -31,7 +51,7 @@ pub enum Statement {
 }
 
 macro_rules! inline_unwrap {
-    ($cursor:expr, Result = $expr:expr, $enum:ident) => {
+    ($enum:ident, $cursor:expr, Result = $expr:expr) => {
         match $expr {
             Ok(ok) => ok,
             Err(err) => {
@@ -40,7 +60,7 @@ macro_rules! inline_unwrap {
             }
         }
     };
-    ($cursor:expr, Option = $expr:expr, $err:expr, $enum:ident) => {
+    ($enum:ident, $cursor:expr, Option = $expr:expr, $err:expr) => {
         match $expr {
             Some(some) => some,
             None => {
@@ -60,17 +80,17 @@ impl Statement {
     }
 
     pub fn parse(cursor: &mut Cursor) -> Spanned<Statement> {
-        let (tok, span) = inline_unwrap!(cursor, Option = cursor.next(), spanned_error!(cursor.eof_span(), "expected statemenet, found `EOF`"), Statement)
+        let (tok, span) = inline_unwrap!(Statement, cursor, Option = cursor.next(), spanned_error!(cursor.eof_span(), "expected statemenet, found `EOF`"))
             .deconstruct();
 
         match tok {
             Token::Keyword(Keyword::If) => {
-                let condition = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                let condition = inline_unwrap!(Statement, cursor, Result = cursor.parse());
 
-                let content: Spanned<Statement> = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                let content: Spanned<Statement> = inline_unwrap!(Statement, cursor, Result = cursor.parse());
 
                 let (else_clause, if_span) = if cursor.check(&Token::Keyword(Keyword::Else)) {
-                    let else_clause: Spanned<Statement> = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                    let else_clause: Spanned<Statement> = inline_unwrap!(Statement, cursor, Result = cursor.parse());
                     let if_span = span.to(else_clause.span());
                 
                     (Some(Box::new(else_clause)), if_span)
@@ -88,7 +108,7 @@ impl Statement {
                 )
             }
             Token::Keyword(Keyword::For) => {
-                let header = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                let header = inline_unwrap!(Statement, cursor, Result = cursor.parse());
                 let content = Statement::parse(cursor);
 
                 let for_span = span.to(content.span());
@@ -97,7 +117,7 @@ impl Statement {
                 Spanned::new(Statement::For(Box::new(for_loop)), for_span)
             }
             Token::Keyword(Keyword::While) => {
-                let check = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                let check = inline_unwrap!(Statement, cursor, Result = cursor.parse());
                 let contents = Statement::parse(cursor);
 
                 let while_span = span.to(contents.span());
@@ -145,7 +165,7 @@ impl Statement {
                 Spanned::new(Statement::Block(statements), block_span)
             }
             Token::Macro(Macro::Asm) => {
-                let string: Parenthesized<Spanned<LitString>> = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+                let string: Parenthesized<Spanned<LitString>> = inline_unwrap!(Statement, cursor, Result = cursor.parse());
                 let asm_span = span.to(string.span());
 
                 Spanned::new(Statement::Asm(string), asm_span)
@@ -162,11 +182,11 @@ impl Statement {
     }
 
     fn variable(cursor: &mut Cursor, keyword_span: Span, mutability: Mutability) -> Spanned<Statement> {
-        let ident = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+        let ident = inline_unwrap!(Statement, cursor, Result = cursor.parse());
 
         let ty = if cursor.check(&Token::Punctuation(Punctuation::Colon)) {
             cursor.step();
-            let ty: Spanned<Type> = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+            let ty = Type::parse(cursor);
 
             spanned_debug!(ty.span().clone(), "typed variable").sync_emit();
 
@@ -176,7 +196,7 @@ impl Statement {
             None
         };
 
-        let _: Token![=] = inline_unwrap!(cursor, Result = cursor.parse(), Statement);
+        let _: Token![=] = inline_unwrap!(Statement, cursor, Result = cursor.parse());
         let assignment = Expr::parse_assignment(cursor);
 
         let var_span = keyword_span.to(assignment.span());
@@ -538,7 +558,7 @@ impl Expr {
                 Token::Keyword(Keyword::As) => {
                     cursor.step();
 
-                    let ty: Spanned<Type> = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
+                    let ty = Type::parse(cursor);
                     let as_span = a.span().to(ty.span());
 
                     a = Spanned::new(Expr::As(Box::new(a), ty), as_span);
@@ -650,9 +670,9 @@ impl Expr {
                 Spanned::new(Expr::Reference(path), span)
             }
             Token::Macro(Macro::Sizeof) => {
-                let _: Token!["("] = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
-                let ty: Spanned<Type> = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
-                let _: Token![")"] = inline_unwrap!(cursor, Result = cursor.parse(), Expr);
+                let _: Token!["("] = inline_unwrap!(Expr, cursor, Result = cursor.parse());
+                let ty = Type::parse(cursor);
+                let _: Token![")"] = inline_unwrap!(Expr, cursor, Result = cursor.parse());
 
                 let span = span.to(ty.span());
                 Spanned::new(Expr::Sizeof(ty), span)
@@ -964,33 +984,18 @@ pub enum Type {
         ty: Box<Spanned<Type>>,
     },
     Tuple(Vec<Spanned<Type>>),
+    Fn {
+        parameters: Punctuated<Spanned<Type>, Token![,]>,
+        return_type: Box<Spanned<Type>>,
+    },
     Err,
 }
 
-impl From<&Primitive> for Type {
-    fn from(value: &Primitive) -> Self {
-        match value {
-            Primitive::Void => Type::Void,
-            Primitive::Bool => Type::Bool,
-            Primitive::U8 => Type::U8,
-            Primitive::U16 => Type::U16,
-            Primitive::U24 => Type::U24,
-            Primitive::U32 => Type::U32,
-            Primitive::U64 => Type::U64,
-            Primitive::I8 => Type::I8,
-            Primitive::I16 => Type::I16,
-            Primitive::I24 => Type::I24,
-            Primitive::I32 => Type::I32,
-            Primitive::I64 => Type::I64,
-        }
-    }
-}
-
-impl Parsable for Spanned<Type> {
-    fn parse(cursor: &mut super::parse::Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+impl Type {
+    fn parse(cursor: &mut super::parse::Cursor) -> Spanned<Type> {
         if let Some(tok) = cursor.next() {
             match tok.inner() {
-                Token::Primitive(p) => Ok(Spanned::new(p.into(), tok.into_span())),
+                Token::Primitive(p) => Spanned::new(p.into(), tok.into_span()),
                 Token::Punctuation(Punctuation::Star) => {
                     let start = tok.into_span();
 
@@ -1001,16 +1006,16 @@ impl Parsable for Spanned<Type> {
                         Mutability::Immutable
                     };
 
-                    let ty: Spanned<Type> = cursor.parse()?;
+                    let ty: Spanned<Type> = Type::parse(cursor);
                     let span = start.to(ty.span());
 
-                    Ok(Spanned::new(
+                    Spanned::new(
                         Type::Pointer {
                             mutability,
                             ty: Box::new(ty),
                         },
                         span,
-                    ))
+                    )
                 }
                 Token::Delimeter(Delimeter::OpenParen) => {
                     let start = tok.into_span();
@@ -1035,7 +1040,7 @@ impl Parsable for Spanned<Type> {
                                     | Token::Punctuation(Punctuation::Comma)
                             );
                         } else {
-                            types.push(cursor.parse()?);
+                            types.push(Type::parse(cursor));
                             comma = if cursor.check(&Token::Punctuation(Punctuation::Comma)) {
                                 cursor.step();
                                 true
@@ -1049,11 +1054,48 @@ impl Parsable for Spanned<Type> {
                         Ok(close) => close,
                         Err(err) => {
                             cursor.reporter().report_sync(err);
-                            return Ok(Spanned::new(Type::Err, cursor.eof_span()));
+                            return Spanned::new(Type::Err, cursor.eof_span());
                         }
                     };
 
-                    Ok(Spanned::new(Type::Tuple(types), start.to(close.span())))
+                    Spanned::new(Type::Tuple(types), start.to(close.span()))
+                }
+                Token::Keyword(Keyword::Fn) => {
+                    let _: Token!["("] = inline_unwrap!(Type, cursor, Result = cursor.parse());
+                    
+                    let mut params_inner = Vec::new();
+                    let mut last_param = None;
+
+                    while let Some(tok) = cursor.next() {
+                        match tok.inner() {
+                            Token::Delimeter(Delimeter::CloseParen) => break,
+                            Token::Punctuation(Punctuation::Comma) => match last_param.take() {
+                                Some(param) => params_inner.push((param, Token![,])),
+                                None => {
+                                    cursor.reporter().report_sync(spanned_error!(
+                                        tok.span().clone(),
+                                        "unexpected duplicate seperator"
+                                    ));
+
+                                    cursor.seek(&Token::Delimeter(Delimeter::CloseParen));
+                                    cursor.step();
+
+                                    return Spanned::new(Type::Err, tok.into_span());
+                                }
+                            },
+                            _ => {
+                                cursor.step_back();
+                                last_param = Some(Type::parse(cursor))
+                            },
+                        }
+                    }
+
+                    let parameters = Punctuated::new(params_inner, last_param);
+                    let _: Token![:] = inline_unwrap!(Type, cursor, Result = cursor.parse());
+                    let return_type = Type::parse(cursor);
+
+                    let ty_span = tok.span().to(return_type.span());
+                    Spanned::new(Type::Fn { parameters, return_type: Box::new(return_type) }, ty_span)
                 }
                 other => {
                     cursor.step_back();
@@ -1063,7 +1105,7 @@ impl Parsable for Spanned<Type> {
                         "expected type, found {}",
                         other.description(),
                     ));
-                    Ok(Spanned::new(Type::Err, tok.into_span()))
+                    Spanned::new(Type::Err, tok.into_span())
                 }
             }
         } else {
@@ -1071,16 +1113,31 @@ impl Parsable for Spanned<Type> {
                 cursor.eof_span(),
                 "expected type, found `EOF`"
             ));
-            Ok(Spanned::new(Type::Err, cursor.eof_span()))
+            Spanned::new(Type::Err, cursor.eof_span())
         }
-    }
-
-    fn description(&self) -> &'static str {
-        "type"
     }
 }
 
-#[derive(Debug, Clone)]
+impl From<&Primitive> for Type {
+    fn from(value: &Primitive) -> Self {
+        match value {
+            Primitive::Void => Type::Void,
+            Primitive::Bool => Type::Bool,
+            Primitive::U8 => Type::U8,
+            Primitive::U16 => Type::U16,
+            Primitive::U24 => Type::U24,
+            Primitive::U32 => Type::U32,
+            Primitive::U64 => Type::U64,
+            Primitive::I8 => Type::I8,
+            Primitive::I16 => Type::I16,
+            Primitive::I24 => Type::I24,
+            Primitive::I32 => Type::I32,
+            Primitive::I64 => Type::I64,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mutability {
     Immutable,
     Mutable,
