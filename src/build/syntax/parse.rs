@@ -27,145 +27,7 @@ pub async fn parse(
     subdir: PathBuf,
 ) -> Result<Namespace, Reporter> {
     let mut cursor = Cursor::new(stream, source_name, lookup, reporter);
-    let mut namespace = Namespace::new(subdir);
-    let mut visibility = Visibility::Private;
-
-    while let Some(tok) = cursor.peek() {
-        match tok.inner() {
-            Token::Keyword(Keyword::Fn) => {
-                match cursor.parse() {
-                    Ok(func) => {
-                        namespace.functions.push((func, visibility));
-                        visibility = Visibility::Private;
-                    },
-                    Err(err) => {
-                        cursor.reporter().report(err).await;
-                        continue;
-                    }
-                }
-            }
-            Token::Keyword(Keyword::Import) => {
-                cursor.step();
-
-                match cursor.parse() {
-                    Ok(path) => namespace.imports.push((path, visibility)),
-                    Err(err) => {
-                        cursor.reporter().report(err).await;
-                        cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
-                    }
-                }
-
-                cursor.expect_semicolon();
-                visibility = Visibility::Private;
-            }
-            Token::Keyword(Keyword::Const) => {
-                match cursor.parse() {
-                    Ok(var) => namespace.constants.push((var, visibility)),
-                    Err(err) => {
-                        cursor.reporter().report(err).await;
-                        cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
-                    }
-                }
-
-                cursor.expect_semicolon();
-                visibility = Visibility::Private;
-            }
-            Token::Keyword(Keyword::Static) => {
-                match cursor.parse() {
-                    Ok(var) => namespace.statics.push((var, visibility)),
-                    Err(err) => {
-                        cursor.reporter().report(err).await;
-                        cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
-                    }
-                }
-
-                cursor.expect_semicolon();
-                visibility = Visibility::Private;
-            }
-            Token::Keyword(Keyword::Progmem) => {
-                match cursor.parse() {
-                    Ok(var) => namespace.progmem.push((var, visibility)),
-                    Err(err) => {
-                        cursor.reporter().report(err).await;
-                        cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
-                    }
-                }
-
-                cursor.expect_semicolon();
-                visibility = Visibility::Private;
-            }
-            Token::Keyword(Keyword::Prot) => {
-                match visibility {
-                    Visibility::Public | Visibility::Protected => cursor.reporter().report(spanned_error!(tok.span().clone(), "duplicate visibility modifier")).await,
-                    Visibility::Private => visibility = Visibility::Protected,
-                }
-
-                cursor.step();
-            }
-            Token::Keyword(Keyword::Pub) => {
-                match visibility {
-                    Visibility::Public | Visibility::Protected => cursor.reporter().report(spanned_error!(tok.span().clone(), "duplicate visibility modifier")).await,
-                    Visibility::Private => visibility = Visibility::Public,
-                }
-
-                cursor.step();
-            }
-            Token::Keyword(Keyword::Namespace) => {
-                let ident = match cursor.parse::<Spanned<Ident>>() {
-                    Ok(ident) => ident,
-                    Err(err) => {
-                        cursor.reporter().report(err).await;
-                        seek!(cursor, Token::Punctuation(Punctuation::Semicolon) | Token::Delimeter(Delimeter::CloseBrace));
-                        cursor.step();
-                        continue;
-                    }
-                };
-                cursor.step();
-
-                match cursor.peek().map(Spanned::inner) {
-                    Some(Token::Delimeter(Delimeter::OpenBrace)) => {
-
-                    }
-                    _ => {
-                        cursor.expect_semicolon();
-
-                    }
-                }
-            }
-            Token::CompInfo(info) => {
-                if matches!(visibility, Visibility::Public | Visibility::Protected) {
-                    cursor.reporter().report(spanned_error!(tok.span().clone(), "compiler info cannot contain visibility modifiers")).await;
-                    cursor.step();
-                    continue;
-                }
-
-                match CompInfo::parse(Spanned::new(info.clone(), tok.span().clone()), cursor.reporter()) {
-                    CompInfo::Lib(lib) => namespace.lib_imports.push(lib),
-                    CompInfo::Err => {}
-                }
-            }
-            _ => {
-                cursor
-                    .reporter()
-                    .report(
-                        spanned_error!(
-                            tok.span().clone(),
-                            "unexpected token {}",
-                            tok.description()
-                        )
-                        .with_note("instructions are not allowed in the top-level section"),
-                    )
-                    .await;
-                cursor.step();
-            }
-        }
-    }
-
-    if cursor.reporter().has_errors() {
-        Err(cursor.take_reporter())
-    } else {
-        Ok(namespace)
-    }
+    Namespace::parse(&mut cursor, subdir).await.map_err(|_| cursor.take_reporter())
 }
 
 #[derive(Debug, Clone)]
@@ -193,15 +55,164 @@ impl Namespace {
             submodules: Vec::new(),
         }
     }
-}
 
-impl Parsable for Namespace {
-    fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
-        todo!()
-    }
+    async fn parse<'a>(cursor: &mut Cursor<'a>, subdir: PathBuf) -> Result<Namespace, ()> {
+        let mut namespace = Namespace::new(subdir);
+        let mut visibility = Visibility::Private;
+    
+        while let Some(tok) = cursor.peek() {
+            match tok.inner() {
+                Token::Keyword(Keyword::Fn) => {
+                    match cursor.parse() {
+                        Ok(func) => {
+                            namespace.functions.push((func, visibility));
+                            visibility = Visibility::Private;
+                        },
+                        Err(err) => {
+                            cursor.reporter().report(err).await;
+                            continue;
+                        }
+                    }
+                }
+                Token::Keyword(Keyword::Import) => {
+                    cursor.step();
+    
+                    match cursor.parse() {
+                        Ok(path) => namespace.imports.push((path, visibility)),
+                        Err(err) => {
+                            cursor.reporter().report(err).await;
+                            cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
+                        }
+                    }
+    
+                    cursor.expect_semicolon();
+                    visibility = Visibility::Private;
+                }
+                Token::Keyword(Keyword::Const) => {
+                    match cursor.parse() {
+                        Ok(var) => namespace.constants.push((var, visibility)),
+                        Err(err) => {
+                            cursor.reporter().report(err).await;
+                            cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
+                        }
+                    }
+    
+                    cursor.expect_semicolon();
+                    visibility = Visibility::Private;
+                }
+                Token::Keyword(Keyword::Static) => {
+                    match cursor.parse() {
+                        Ok(var) => namespace.statics.push((var, visibility)),
+                        Err(err) => {
+                            cursor.reporter().report(err).await;
+                            cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
+                        }
+                    }
+    
+                    cursor.expect_semicolon();
+                    visibility = Visibility::Private;
+                }
+                Token::Keyword(Keyword::Progmem) => {
+                    match cursor.parse() {
+                        Ok(var) => namespace.progmem.push((var, visibility)),
+                        Err(err) => {
+                            cursor.reporter().report(err).await;
+                            cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
+                        }
+                    }
+    
+                    cursor.expect_semicolon();
+                    visibility = Visibility::Private;
+                }
+                Token::Keyword(Keyword::Prot) => {
+                    match visibility {
+                        Visibility::Public | Visibility::Protected => cursor.reporter().report(spanned_error!(tok.span().clone(), "duplicate visibility modifier")).await,
+                        Visibility::Private => visibility = Visibility::Protected,
+                    }
+    
+                    cursor.step();
+                }
+                Token::Keyword(Keyword::Pub) => {
+                    match visibility {
+                        Visibility::Public | Visibility::Protected => cursor.reporter().report(spanned_error!(tok.span().clone(), "duplicate visibility modifier")).await,
+                        Visibility::Private => visibility = Visibility::Public,
+                    }
+    
+                    cursor.step();
+                }
+                Token::Keyword(Keyword::Namespace) => {
+                    let ident = match cursor.parse::<Spanned<Ident>>() {
+                        Ok(ident) => ident,
+                        Err(err) => {
+                            cursor.reporter().report(err).await;
+                            seek!(cursor, Token::Punctuation(Punctuation::Semicolon) | Token::Delimeter(Delimeter::CloseBrace));
+                            cursor.step();
+                            continue;
+                        }
+                    };
+                    cursor.step();
+    
+                    match cursor.peek().map(Spanned::inner) {
+                        Some(Token::Delimeter(Delimeter::OpenBrace)) => {
+                            let mut depth = 0;
+                            let start = cursor.position + 1;
 
-    fn description(&self) -> &'static str {
-        "namespace"
+                            while let Some(tok) = cursor.peek() {
+                                match tok.inner() {
+                                    Token::Delimeter(Delimeter::OpenBrace) => depth += 1,
+                                    Token::Delimeter(Delimeter::CloseBrace) => if depth == 1 {
+                                        let namespace_cursor = cursor.slice(start..cursor.position);
+
+                                        // let namespace = Namespace::parse()
+                                    } else {
+                                        depth -= 1;
+                                    }
+                                    _ => {}
+                                }
+
+                                cursor.step()
+                            }
+                        }
+                        _ => {
+                            cursor.expect_semicolon();
+    
+                        }
+                    }
+                }
+                Token::CompInfo(info) => {
+                    if matches!(visibility, Visibility::Public | Visibility::Protected) {
+                        cursor.reporter().report(spanned_error!(tok.span().clone(), "compiler info cannot contain visibility modifiers")).await;
+                        cursor.step();
+                        continue;
+                    }
+    
+                    match CompInfo::parse(Spanned::new(info.clone(), tok.span().clone()), cursor.reporter()) {
+                        CompInfo::Lib(lib) => namespace.lib_imports.push(lib),
+                        CompInfo::Err => {}
+                    }
+                }
+                _ => {
+                    cursor
+                        .reporter()
+                        .report(
+                            spanned_error!(
+                                tok.span().clone(),
+                                "unexpected token {}",
+                                tok.description()
+                            )
+                            .with_note("instructions are not allowed in the top-level section"),
+                        )
+                        .await;
+                    cursor.step();
+                }
+            }
+        }
+
+        if cursor.reporter().has_errors() {
+            Err(())
+        } else {
+            Ok(namespace)
+        }
     }
 }
 
