@@ -7,11 +7,71 @@ use super::{
 };
 
 pub struct FnDef {
-    visibility: Visibility,
     ident: Spanned<Ident>,
     parameters: Punctuated<Spanned<Parameter>, Token![,]>,
     return_type: Spanned<Type>,
     body: Spanned<Statement>,
+}
+
+impl Parsable for Spanned<FnDef> {
+    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let keyword: Spanned<Token![fn]> = cursor.parse()?;
+        let ident = cursor.parse()?;
+        let _: Token!["("] = cursor.parse()?;
+        
+        let mut params_inner = Vec::new();
+        let mut last_param = None;
+
+        while let Some(tok) = cursor.peek() {
+            match tok.inner() {
+                Token::Delimeter(Delimeter::CloseParen) => break,
+                Token::Punctuation(Punctuation::Comma) => match last_param.take() {
+                    Some(param) => {
+                        cursor.step();
+                        params_inner.push((param, Token![,]))
+                    },
+                    None => {
+                        cursor.reporter().report_sync(spanned_error!(tok.span().clone(), "unexpected duplicate seperator"));
+                        cursor.seek(&Token::Delimeter(Delimeter::CloseParen));
+                        break;
+                    }
+                }
+                _ => {
+                    let param = match cursor.parse() {
+                        Ok(param) => param,
+                        Err(err) => {
+                            cursor.reporter().report_sync(err);
+                            cursor.seek(&Token::Delimeter(Delimeter::CloseParen));
+                            break;
+                        }
+                    };
+
+                    last_param = Some(param);
+                }
+            }
+        }
+
+        let parameters = Punctuated::new(params_inner, last_param);
+
+        let close_paren: Spanned<Token![")"]> = cursor.parse()?;
+
+        let return_type = if cursor.check(&Token::Punctuation(Punctuation::Colon)) {
+            cursor.step();
+            Type::parse(cursor)
+        } else {
+            cursor.reporter().report_sync(spanned_error!(close_paren.span().clone(), "missing return type"));
+            Spanned::new(Type::Err, close_paren.into_span())
+        };
+
+        let body = Statement::parse(cursor);
+
+        let fn_span = keyword.span().to(body.span());
+        Ok(Spanned::new(FnDef {ident, parameters, return_type, body}, fn_span))
+    }
+
+    fn description(&self) -> &'static str {
+        "function definition"
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,6 +84,16 @@ pub enum Visibility {
 pub struct Parameter {
     ident: Spanned<Ident>,
     ty: Spanned<Type>,
+}
+
+impl Parsable for Spanned<Parameter> {
+    fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        todo!()
+    }
+
+    fn description(&self) -> &'static str {
+        "function parameter"
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -857,6 +927,7 @@ impl Parsable for Spanned<Path> {
                 ))
             }
         };
+        cursor.step();
 
         let mut segments: Vec<Spanned<Ident>> = Vec::new();
 
