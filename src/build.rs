@@ -22,7 +22,7 @@ mod ascii;
 mod symbol_table;
 
 pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
-    let file_name = input.to_string_lossy().into_owned();
+    let file_name = input.to_string_lossy().replace('\\', "/");
     let file = match File::open(&input).await {
         Ok(file) => file,
         Err(err) => {
@@ -65,7 +65,7 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
         }
     };
 
-    let namespace = match parse(&lexed.stream, lexed.source, lexed.lookup, Reporter::new(), root_dir.into()).await {
+    let namespace = match parse(&lexed.stream, lexed.source, lexed.lookup, Reporter::new(), &lexed.symbol_table, root_dir.into()).await {
         Ok(namespace) => namespace,
         Err(reporter) => {
             reporter.emit_all().await;

@@ -892,7 +892,10 @@ impl Expr {
                     match tok.inner() {
                         Token::Delimeter(Delimeter::CloseBracket) => break,
                         Token::Punctuation(Punctuation::Comma) => match last_expr.take() {
-                            Some(last) => contents_inner.push((last, Token![,])),
+                            Some(last) => {
+                                contents_inner.push((last, Token![,]));
+                                cursor.step();
+                            },
                             None => {
                                 cursor.reporter().report_sync(spanned_error!(
                                     tok.span().clone(),
@@ -1224,7 +1227,7 @@ impl Type {
                         span,
                     )
                 }
-                Token::Delimeter(Delimeter::OpenBrace) => {
+                Token::Delimeter(Delimeter::OpenBracket) => {
                     let ty = Type::parse(cursor);
                     let close: Spanned<Token!["]"]> = inline_unwrap!(Type, cursor, Result = cursor.parse());
 

@@ -3,19 +3,16 @@ use std::{
     sync::Arc,
 };
 
-use async_std::path::PathBuf;
+use async_std::{fs::File, path::PathBuf};
 
 use crate::{
-    build::syntax::{info::CompInfo, lex::Keyword},
-    diagnostic::{Diagnostic, Reporter},
-    span::{Lookup, Span, Spanned},
-    spanned_error, seek,
+    build::{symbol_table::SymbolTable, syntax::{info::CompInfo, lex::Keyword}}, debug, diagnostic::{Diagnostic, Reporter}, info, seek, span::{Lookup, Span, Spanned}, spanned_error, spanned_info
 };
 
 use super::{
     ast::{Const, Function, Path, Progmem, Static},
     info::{Lib, LibSrc},
-    lex::{Delimeter, Punctuation, Token},
+    lex::{lex, Delimeter, Punctuation, Token},
     token::{CloseBrace, CloseBracket, CloseParen, Gt, Ident, Lt, OpenBrace, OpenBracket, OpenParen},
 };
 
@@ -24,9 +21,10 @@ pub async fn parse(
     source_name: Arc<String>,
     lookup: Arc<Lookup>,
     reporter: Reporter,
+    symbol_table: &SymbolTable,
     subdir: PathBuf,
 ) -> Result<Namespace, Reporter> {
-    let mut cursor = Cursor::new(stream, source_name, lookup, reporter);
+    let mut cursor = Cursor::new(stream, source_name, lookup, symbol_table, reporter);
     Namespace::parse(&mut cursor, subdir).await.map_err(|_| cursor.take_reporter())
 }
 
@@ -39,7 +37,7 @@ pub struct Namespace {
     pub constants: Vec<(Spanned<Const>, Visibility)>,
     pub statics: Vec<(Spanned<Static>, Visibility)>,
     pub progmem: Vec<(Spanned<Progmem>, Visibility)>,
-    pub submodules: Vec<(Spanned<Ident>, Namespace, Visibility)>,
+    pub subspaces: Vec<(Spanned<Ident>, Namespace, Visibility)>,
 }
 
 impl Namespace {
@@ -52,12 +50,12 @@ impl Namespace {
             constants: Vec::new(),
             statics: Vec::new(),
             progmem: Vec::new(),
-            submodules: Vec::new(),
+            subspaces: Vec::new(),
         }
     }
 
     async fn parse<'a>(cursor: &mut Cursor<'a>, subdir: PathBuf) -> Result<Namespace, ()> {
-        let mut namespace = Namespace::new(subdir);
+        let mut namespace = Namespace::new(subdir.clone());
         let mut visibility = Visibility::Private;
     
         while let Some(tok) = cursor.peek() {
@@ -141,6 +139,7 @@ impl Namespace {
                     cursor.step();
                 }
                 Token::Keyword(Keyword::Namespace) => {
+                    cursor.step();
                     let ident = match cursor.parse::<Spanned<Ident>>() {
                         Ok(ident) => ident,
                         Err(err) => {
@@ -150,7 +149,6 @@ impl Namespace {
                             continue;
                         }
                     };
-                    cursor.step();
     
                     match cursor.peek().map(Spanned::inner) {
                         Some(Token::Delimeter(Delimeter::OpenBrace)) => {
@@ -161,9 +159,15 @@ impl Namespace {
                                 match tok.inner() {
                                     Token::Delimeter(Delimeter::OpenBrace) => depth += 1,
                                     Token::Delimeter(Delimeter::CloseBrace) => if depth == 1 {
-                                        let namespace_cursor = cursor.slice(start..cursor.position);
+                                        let space_subdir = subdir.join(cursor.symbol_table.get(ident.inner().symbol));
+                                        let mut space_cursor = cursor.slice(start..cursor.position);
 
-                                        // let namespace = Namespace::parse()
+                                        if let Ok(subspace) = Box::pin(Namespace::parse(&mut space_cursor, space_subdir)).await {
+                                            namespace.subspaces.push((ident, subspace, visibility));
+                                        }
+                                        visibility = Visibility::Private;
+                                        cursor.step();
+                                        break;
                                     } else {
                                         depth -= 1;
                                     }
@@ -175,7 +179,31 @@ impl Namespace {
                         }
                         _ => {
                             cursor.expect_semicolon();
-    
+                            
+                            let subspace_path = subdir.join(cursor.symbol_table.get(ident.inner().symbol)).with_extension("warp");
+                            let file_name = subspace_path.to_string_lossy().replace("\\", "/");
+                            let subspace_file = match File::open(&subspace_path).await {
+                                Ok(file) => file,
+                                Err(err) => {
+                                    cursor.reporter().report(spanned_error!(ident.into_span(), "unable to open file `{file_name}`: {err}")).await;
+                                    continue;
+                                }
+                            };
+
+                            let lexed = match lex(file_name, subspace_file).await {
+                                Ok(lexed) => lexed,
+                                Err(errors) => {
+                                    cursor.reporter().report_all(errors).await;
+                                    continue;
+                                }
+                            };
+                            
+                            let subspace_dir = subspace_path.with_extension("");
+                            let mut cursor = Cursor::new(&lexed.stream, lexed.source, lexed.lookup, &lexed.symbol_table, cursor.reporter().clone());
+                            if let Ok(subspace) = Box::pin(Namespace::parse(&mut cursor, subspace_dir)).await {
+                                namespace.subspaces.push((ident, subspace, visibility));
+                            }
+                            visibility = Visibility::Private;
                         }
                     }
                 }
@@ -185,7 +213,7 @@ impl Namespace {
                         cursor.step();
                         continue;
                     }
-    
+
                     match CompInfo::parse(Spanned::new(info.clone(), tok.span().clone()), cursor.reporter()) {
                         CompInfo::Lib(lib) => namespace.lib_imports.push(lib),
                         CompInfo::Err => {}
@@ -228,6 +256,7 @@ pub struct Cursor<'a> {
     pub position: usize,
     eof_span: Span,
     reporter: Reporter,
+    symbol_table: &'a SymbolTable,
 }
 
 impl<'a> Cursor<'a> {
@@ -236,6 +265,7 @@ impl<'a> Cursor<'a> {
         stream: &'a [Spanned<Token>],
         source_name: Arc<String>,
         lookup: Arc<Lookup>,
+        symbol_table: &'a SymbolTable,
         reporter: Reporter,
     ) -> Self {
         let end_position = stream
@@ -246,6 +276,7 @@ impl<'a> Cursor<'a> {
             stream,
             position: 0,
             eof_span: Span::new(source_name, lookup, end_position),
+            symbol_table,
             reporter,
         }
     }
@@ -318,6 +349,7 @@ impl<'a> Cursor<'a> {
             &self.stream[range.into()],
             self.eof_span.source_name(),
             self.eof_span.lookup(),
+            self.symbol_table,
             self.reporter.clone(),
         )
     }

@@ -311,6 +311,11 @@ impl Reporter {
         diagnostics.push(diag);
     }
 
+    pub async fn report_all(&self, mut other: Vec<Diagnostic>) {
+        let mut diagnostics = self.diagnostics.write().await;
+        diagnostics.append(&mut other);
+    }
+
     pub async fn emit_all(&self) {
         let mut diagnostics = self.diagnostics.write().await;
         for diagnostic in diagnostics.drain(..) {

@@ -29,8 +29,8 @@ impl SymbolTable {
             .map(SymbolRef::new)
     }
 
-    pub fn get<'a>(&'a self, id: SymbolRef) -> Option<&'a str> {
-        self.symbols.get(id.inner()).map(|s| s.as_str())
+    pub fn get<'a>(&'a self, id: SymbolRef) -> &'a str {
+        self.symbols[id.inner()].as_str()
     }
 }
 
