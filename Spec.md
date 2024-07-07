@@ -113,6 +113,22 @@ The initializer is run before the loop starts, and is used to initialize the loo
 The condition is a boolean condition that, similar to a while loop, is checked before each run of the loop.
 The update is a block that runs after each iteration of the loop, before the condition is checked.
 
+The syntax of a `for` loop is the following: 
+```rs
+for (/* initializer */; /* condition */; /* update */) {
+    /* content */
+}
+```
+
+This is equivalent to the following `while` loop:
+```rs
+/* initializer */
+while (/* condition */) {
+    /* content */
+    /* update */
+}
+```
+
 ## Subspaces
 
 Subspaces work similarly to modules in Rust.
