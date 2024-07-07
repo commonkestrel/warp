@@ -31,7 +31,7 @@ pub struct LexResult {
     pub symbol_table: Arc<SymbolTable>,
 }
 
-pub async fn lex(source: String, content: File) -> Result<LexResult, Errors> {
+pub async fn lex(symbol_table: SymbolTable, source: String, content: File) -> Result<LexResult, Errors> {
     let mut tokens = TokenStream::new();
     let mut errors = Errors::new();
     let source = Arc::new(source);
@@ -47,7 +47,7 @@ pub async fn lex(source: String, content: File) -> Result<LexResult, Errors> {
     let file = Arc::new(file.replace('\t', TAB_SPACING).replace("\r", ""));
     let lookup = Arc::new(Lookup::new(file.clone()));
 
-    let mut lex = Token::lexer(&file);
+    let mut lex = Token::lexer_with_extras(&file, symbol_table);
 
     while let Some(tok) = lex.next() {
         let s = Span::new(source.clone(), lookup.clone(), lex.span());

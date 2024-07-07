@@ -190,7 +190,7 @@ impl Namespace {
                                 }
                             };
 
-                            let lexed = match lex(file_name, subspace_file).await {
+                            let lexed = match lex(cursor.symbol_table.clone(), file_name, subspace_file).await {
                                 Ok(lexed) => lexed,
                                 Err(errors) => {
                                     cursor.reporter().report_all(errors).await;
@@ -218,7 +218,7 @@ impl Namespace {
                         CompInfo::Lib(lib) => {
                             match locate_library(lib.src, cursor.reporter()).await {
                                 Ok(path) => namespace.lib_imports.push((Ident { symbol: cursor.symbol_table.find_or_insert(&lib.ident).await }, path)),
-                                Err(err) => {}
+                                Err(err) => {},
                             }
                         },
                         CompInfo::Err => {}

@@ -1,5 +1,5 @@
 use async_std::path::PathBuf;
-use git2::build::RepoBuilder;
+use git2::{build::RepoBuilder, Repository};
 use url::Url;
 
 use crate::{build::syntax::info::LibSrc, diagnostic::{Diagnostic, Reporter}, span::{Span, Spanned}, spanned_error};
@@ -58,10 +58,11 @@ async fn clone(span: Span, url: Spanned<Url>, commit_hash: Option<Spanned<String
 
     let mut repo_dir: PathBuf = warp_home.join("git").join(host).into();
     repo_dir.extend(path_segments);
-
-    if !repo_dir.exists().await {
-        if let Err(err) = async_std::fs::create_dir_all(&repo_dir).await {
-            return Err(spanned_error!(span, "unable to create package directory: {err}"));
+    
+    if repo_dir.exists().await {
+        match async_std::fs::remove_dir_all(&repo_dir).await {
+            Ok(_) => {}
+            Err(err) => return Err(spanned_error!(span, "failed to remove existing cache: {err}"))
         }
     }
 

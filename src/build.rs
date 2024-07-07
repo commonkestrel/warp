@@ -2,12 +2,14 @@ use std::{env, path::PathBuf, process::ExitCode};
 
 use async_std::{fs::File, io::WriteExt};
 use clio::{Input, Output};
+use symbol_table::SymbolTable;
 use syntax::{ast::Function, info::CompInfo, lex::Token, parse::{parse, Cursor}};
 
 use crate::{diagnostic::Reporter, error, span::Spanned};
 
 mod frontend {
     pub mod uncaught_error;
+    pub mod typed;
 }
 
 mod syntax {
@@ -35,7 +37,8 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
         }
     };
 
-    let lexed = match syntax::lex::lex(file_name, file).await {
+    let symbol_table = SymbolTable::default();
+    let lexed = match syntax::lex::lex(symbol_table, file_name, file).await {
         Ok(lexed) => lexed,
         Err(errors) => {
             for err in errors {

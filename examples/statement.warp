@@ -1,0 +1,22 @@
+//! lib std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 5a6bb6d)
+import std::alloc::vec;
+
+const SOMETHING = 42;
+
+pub fn test(hello: u32, world: void): i8 {
+    let x = 23;
+
+    mut x: u16 = 3 * sizeof!(u8);
+
+    let v = vec::new(sizeof!(u8));
+
+    let y: fn(u16): u32 = hello;
+}
+
+pub fn square(x: u16): u16 return x*x
+
+namespace child {
+    prot progmem SIN: [i8] = [0, 1, 0, -1];
+}
+
+namespace lib;

@@ -1,0 +1,1 @@
+Lib(Lib { ident: "std", src: Git { url: "https://github.com/commonkestrel/warp-std", commit: Some("5a6bb6d"), branch: Some("main") } })
