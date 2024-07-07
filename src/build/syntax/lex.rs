@@ -97,7 +97,7 @@ impl Parsable for Spanned<Token> {
 #[logos(error = Diagnostic)]
 #[logos(extras = SymbolTable)]
 #[logos(skip r"[ \t\f\n\r]")]
-#[logos(skip r"//[^\n]*\n?")]
+#[logos(skip r"//[^!][^\n]*\n?")]
 #[logos(skip r"/\*(?:[^*]|\*[^/])*\*/")]
 pub enum Token {
     #[token("import", |_| Keyword::Import)]

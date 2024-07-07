@@ -18,6 +18,10 @@ mod syntax {
     pub mod token;
 }
 
+mod lib {
+    pub mod locator;
+}
+
 mod ascii;
 mod symbol_table;
 

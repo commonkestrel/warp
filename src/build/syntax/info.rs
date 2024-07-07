@@ -1,3 +1,4 @@
+use async_std::path::PathBuf;
 use logos::Logos;
 
 use crate::{
@@ -22,11 +23,11 @@ pub struct Lib {
 pub enum LibSrc {
     Simple(String),
     Git {
-        url: String,
-        commit: Option<String>,
-        branch: Option<String>,
+        url: Spanned<String>,
+        commit: Option<Spanned<String>>,
+        branch: Option<Spanned<String>>,
     },
-    Path(String),
+    Path(PathBuf),
 }
 
 #[derive(Logos, Debug, Clone, PartialEq)]
@@ -144,9 +145,9 @@ impl CompInfo {
                 span,
             }) => {
                 expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3))?;
-                let mut url: Option<String> = None;
-                let mut commit: Option<String> = None;
-                let mut branch: Option<String> = None;
+                let mut url: Option<Spanned<String>> = None;
+                let mut commit: Option<Spanned<String>> = None;
+                let mut branch: Option<Spanned<String>> = None;
 
                 let mut i = 4;
                 let mut comma = true;
@@ -172,9 +173,9 @@ impl CompInfo {
                     }
 
                     match field.inner().as_str() {
-                        "url" => url = Some(value.into_inner()),
-                        "commit" => commit = Some(value.into_inner()),
-                        "branch" => branch = Some(value.into_inner()),
+                        "url" => url = Some(value),
+                        "commit" => commit = Some(value),
+                        "branch" => branch = Some(value),
                         _ => {
                             let (description, span) = field.deconstruct();
                             return Err(spanned_error!(span, "unknown field {description}"));
@@ -224,7 +225,7 @@ impl CompInfo {
                 Ok(Spanned::new(
                     Lib {
                         ident,
-                        src: Spanned::new(LibSrc::Path(path), span),
+                        src: Spanned::new(LibSrc::Path(PathBuf::from(path)), span),
                     },
                     info_span,
                 ))

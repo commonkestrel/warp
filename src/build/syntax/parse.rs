@@ -218,6 +218,7 @@ impl Namespace {
                         CompInfo::Lib(lib) => namespace.lib_imports.push(lib),
                         CompInfo::Err => {}
                     }
+                    cursor.step()
                 }
                 _ => {
                     cursor
