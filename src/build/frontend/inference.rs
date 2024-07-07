@@ -2,6 +2,7 @@ use crate::{build::syntax::ast::Mutability, diagnostic::Diagnostic, span::Spanne
 
 pub mod weak {
     pub mod ast;
+    pub mod lib;
 }
 
 pub mod strong {

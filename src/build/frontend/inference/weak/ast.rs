@@ -5,10 +5,14 @@ use slotmap::{new_key_type, SlotMap};
 use crate::{build::{ascii::AsciiStr, frontend::inference::Type, syntax::{ast::{BinaryOp, Mutability, Path, Statement, UnaryOp}, parse::{Namespace, Visibility}, token::Ident}}, span::Spanned};
 
 pub fn resolve(src: Namespace) -> Database {
+    
+
     todo!()
 }
 
-pub type Database = HashMap<Ident, Spanned<Visible<Item>>>;
+pub struct Database {
+    items: HashMap<Ident, Spanned<Visible<Item>>>,
+}
 
 pub struct Visible<T> {
     visibility: Visibility,

@@ -31,7 +31,7 @@ pub async fn parse(
 #[derive(Debug, Clone)]
 pub struct Namespace {
     pub subdir: PathBuf,
-    pub lib_imports: Vec<(Ident, PathBuf)>,
+    pub lib_imports: Vec<(Spanned<Ident>, PathBuf)>,
     pub functions: Vec<(Spanned<Function>, Visibility)>,
     pub imports: Vec<(Spanned<Path>, Visibility)>,
     pub constants: Vec<(Spanned<Const>, Visibility)>,
@@ -217,7 +217,7 @@ impl Namespace {
                     match CompInfo::parse(Spanned::new(info.clone(), tok.span().clone()), cursor.reporter()) {
                         CompInfo::Lib(lib) => {
                             match locate_library(lib.src, cursor.reporter()).await {
-                                Ok(path) => namespace.lib_imports.push((Ident { symbol: cursor.symbol_table.find_or_insert(&lib.ident).await }, path)),
+                                Ok(path) => namespace.lib_imports.push((Spanned::new(Ident { symbol: cursor.symbol_table.find_or_insert(&lib.ident).await }, lib.ident.span().clone()), path)),
                                 Err(err) => {},
                             }
                         },
