@@ -425,7 +425,7 @@ pub struct Punctuated<T, S> {
     last: Box<Option<T>>,
 }
 
-impl<T, S> Punctuated<T, S> {
+impl<T: 'static, S: 'static> Punctuated<T, S> {
     pub fn new(inner: Vec<(T, S)>, last: Option<T>) -> Self {
         Punctuated {
             inner,
@@ -463,6 +463,15 @@ impl<T, S> Punctuated<T, S> {
                 .iter()
                 .map(|pair| &pair.0)
                 .chain(self.last.iter()),
+        )
+    }
+
+    pub fn into_values(self) -> Box<dyn Iterator<Item = T>> {
+        Box::new(
+            self.inner
+                .into_iter()
+                .map(|pair| pair.0)
+                .chain(self.last.into_iter())
         )
     }
 
