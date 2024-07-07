@@ -6,7 +6,7 @@ use std::{
 use async_std::{fs::File, path::PathBuf};
 
 use crate::{
-    build::{symbol_table::SymbolTable, syntax::{info::CompInfo, lex::Keyword}}, debug, diagnostic::{Diagnostic, Reporter}, info, seek, span::{Lookup, Span, Spanned}, spanned_error, spanned_info
+    build::{lib::locator::locate_library, symbol_table::SymbolTable, syntax::{info::CompInfo, lex::Keyword}}, debug, diagnostic::{Diagnostic, Reporter}, info, seek, span::{Lookup, Span, Spanned}, spanned_error, spanned_info
 };
 
 use super::{
@@ -31,7 +31,7 @@ pub async fn parse(
 #[derive(Debug, Clone)]
 pub struct Namespace {
     pub subdir: PathBuf,
-    pub lib_imports: Vec<Lib>,
+    pub lib_imports: Vec<(Ident, PathBuf)>,
     pub functions: Vec<(Spanned<Function>, Visibility)>,
     pub imports: Vec<(Spanned<Path>, Visibility)>,
     pub constants: Vec<(Spanned<Const>, Visibility)>,
@@ -159,7 +159,7 @@ impl Namespace {
                                 match tok.inner() {
                                     Token::Delimeter(Delimeter::OpenBrace) => depth += 1,
                                     Token::Delimeter(Delimeter::CloseBrace) => if depth == 1 {
-                                        let space_subdir = subdir.join(cursor.symbol_table.get(ident.inner().symbol));
+                                        let space_subdir = subdir.join(cursor.symbol_table.get(ident.inner().symbol).await);
                                         let mut space_cursor = cursor.slice(start..cursor.position);
 
                                         if let Ok(subspace) = Box::pin(Namespace::parse(&mut space_cursor, space_subdir)).await {
@@ -180,7 +180,7 @@ impl Namespace {
                         _ => {
                             cursor.expect_semicolon();
                             
-                            let subspace_path = subdir.join(cursor.symbol_table.get(ident.inner().symbol)).with_extension("warp");
+                            let subspace_path = subdir.join(cursor.symbol_table.get(ident.inner().symbol).await).with_extension("warp");
                             let file_name = subspace_path.to_string_lossy().replace("\\", "/");
                             let subspace_file = match File::open(&subspace_path).await {
                                 Ok(file) => file,
@@ -215,7 +215,12 @@ impl Namespace {
                     }
 
                     match CompInfo::parse(Spanned::new(info.clone(), tok.span().clone()), cursor.reporter()) {
-                        CompInfo::Lib(lib) => namespace.lib_imports.push(lib),
+                        CompInfo::Lib(lib) => {
+                            match locate_library(lib.src, cursor.reporter()).await {
+                                Ok(path) => namespace.lib_imports.push((Ident { symbol: cursor.symbol_table.find_or_insert(&lib.ident).await }, path)),
+                                Err(err) => {}
+                            }
+                        },
                         CompInfo::Err => {}
                     }
                     cursor.step()

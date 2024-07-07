@@ -301,7 +301,7 @@ impl Token {
     }
 
     fn ident(lex: &mut Lexer<Token>) -> SymbolRef {
-        lex.extras.find_or_insert(lex.slice())
+        async_std::task::block_on(lex.extras.find_or_insert(lex.slice()))
     }
 }
 

@@ -1,5 +1,6 @@
 use async_std::path::PathBuf;
 use logos::Logos;
+use url::Url;
 
 use crate::{
     diagnostic::{Diagnostic, Reporter},
@@ -21,9 +22,9 @@ pub struct Lib {
 
 #[derive(Debug, Clone)]
 pub enum LibSrc {
-    Simple(String),
+    Simple(Url),
     Git {
-        url: Spanned<String>,
+        url: Spanned<Url>,
         commit: Option<Spanned<String>>,
         branch: Option<Spanned<String>>,
     },
@@ -145,7 +146,7 @@ impl CompInfo {
                 span,
             }) => {
                 expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3))?;
-                let mut url: Option<Spanned<String>> = None;
+                let mut url: Option<Spanned<Url>> = None;
                 let mut commit: Option<Spanned<String>> = None;
                 let mut branch: Option<Spanned<String>> = None;
 
@@ -173,7 +174,10 @@ impl CompInfo {
                     }
 
                     match field.inner().as_str() {
-                        "url" => url = Some(value),
+                        "url" => match Url::parse(&value) {
+                            Ok(val) => url = Some(Spanned::new(val, value.into_span())),
+                            Err(err) => return Err(spanned_error!(value.into_span(), "invalid URL: {err}"))
+                        },
                         "commit" => commit = Some(value),
                         "branch" => branch = Some(value),
                         _ => {
@@ -231,15 +235,19 @@ impl CompInfo {
                 ))
             }
             Some(Spanned {
-                inner: InfoToken::Text(url),
+                inner: InfoToken::Text(value),
                 span,
             }) => {
                 let info_span = ident.span().to(span);
+                let url = match Url::parse(&value) {
+                    Ok(url) => url,
+                    Err(err) => return Err(spanned_error!(span.clone(), "invalid URL: {err}")),
+                };
 
                 Ok(Spanned::new(
                     Lib {
                         ident,
-                        src: Spanned::new(LibSrc::Simple(url.clone()), span.clone()),
+                        src: Spanned::new(LibSrc::Simple(url), span.clone()),
                     },
                     info_span,
                 ))

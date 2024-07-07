@@ -1,36 +1,45 @@
-#[derive(Debug, Clone, PartialEq)]
+use std::sync::Arc;
+
+use async_std::sync::RwLock;
+
+#[derive(Debug, Clone)]
 pub struct SymbolTable {
-    symbols: Vec<String>,
+    symbols: Arc<RwLock<Vec<String>>>,
 }
 
 impl SymbolTable {
     pub fn new() -> Self {
         Self {
-            symbols: Vec::new(),
+            symbols: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
-    pub fn find_or_insert(&mut self, symbol: &str) -> SymbolRef {
-        match self.find(symbol) {
+    pub async fn find_or_insert(&self, symbol: &str) -> SymbolRef {
+        match self.find(symbol).await {
             Some(pos) => pos,
             None => {
-                self.symbols.push(symbol.to_owned());
-                let pos = self.symbols.len() - 1;
+                let mut symbols = self.symbols.write().await;
+
+                symbols.push(symbol.to_owned());
+                let pos = symbols.len() - 1;
 
                 SymbolRef::new(pos)
             }
         }
     }
 
-    pub fn find(&self, symbol: &str) -> Option<SymbolRef> {
-        self.symbols
+    pub async fn find(&self, symbol: &str) -> Option<SymbolRef> {
+        let symbols = self.symbols.read().await;
+
+        symbols
             .iter()
             .position(|s| s == symbol)
             .map(SymbolRef::new)
     }
 
-    pub fn get<'a>(&'a self, id: SymbolRef) -> &'a str {
-        self.symbols[id.inner()].as_str()
+    pub async fn get(&self, id: SymbolRef) -> String {
+        let symbols = self.symbols.read().await;
+        symbols[id.inner()].clone()
     }
 }
 

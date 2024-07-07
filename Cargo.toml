@@ -18,6 +18,7 @@ home = "0.5.9"
 lazy-regex = "3.1.0"
 logos = "0.14.0"
 oem_cp = "2.0.0"
+url = "2.5.2"
 
 [[bin]]
 name = "warp"

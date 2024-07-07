@@ -1,8 +1,10 @@
 use async_std::path::PathBuf;
+use git2::build::RepoBuilder;
+use url::Url;
 
-use crate::{build::syntax::info::LibSrc, diagnostic::{Diagnostic, Reporter}, span::Spanned, spanned_error};
+use crate::{build::syntax::info::LibSrc, diagnostic::{Diagnostic, Reporter}, span::{Span, Spanned}, spanned_error};
 
-pub async fn locate_library(src: Spanned<LibSrc>, reporter: Reporter) -> Result<PathBuf, ()> {
+pub async fn locate_library(src: Spanned<LibSrc>, reporter: &Reporter) -> Result<PathBuf, ()> {
     let (source, span) = src.deconstruct();
 
     match source {
@@ -15,7 +17,7 @@ pub async fn locate_library(src: Spanned<LibSrc>, reporter: Reporter) -> Result<
             }
         }
         LibSrc::Simple(url) => {
-            match clone(Spanned::new(url, span), None, None).await {
+            match clone(span.clone(), Spanned::new(url, span), None, None).await {
                 Ok(path) => Ok(path),
                 Err(err) => {
                     reporter.report(err).await;
@@ -26,7 +28,7 @@ pub async fn locate_library(src: Spanned<LibSrc>, reporter: Reporter) -> Result<
         LibSrc::Git {
             url, commit, branch
         } => {
-            match clone(url, commit, branch).await {
+            match clone(span, url, commit, branch).await {
                 Ok(path) => Ok(path),
                 Err(err) => {
                     reporter.report(err).await;
@@ -38,17 +40,53 @@ pub async fn locate_library(src: Spanned<LibSrc>, reporter: Reporter) -> Result<
 
 }
 
-async fn clone(url: Spanned<String>, commit: Option<Spanned<String>>, branch: Option<Spanned<String>>) -> Result<PathBuf, Diagnostic> {
-    let warp_home: PathBuf = match home::home_dir() {
-        Some(dir) => dir.join(".warp").into(),
-        None => return Err(spanned_error!(url.into_span(), "failed to fetch home directory while cloning git repository")),
+async fn clone(span: Span, url: Spanned<Url>, commit_hash: Option<Spanned<String>>, branch: Option<Spanned<String>>) -> Result<PathBuf, Diagnostic> {
+    let host = match url.host_str() {
+        Some(host) => host,
+        None => return Err(spanned_error!(url.into_span(), "cannot-be-a-base URLs are not allowed")),
     };
 
-    if !warp_home.exists().await {
-        if let Err(err) = async_std::fs::create_dir(warp_home).await {
-            return Err(spanned_error!(url.into_span(), "unable to create `.warp` home directory: {err}"));
+    let path_segments = match url.path_segments() {
+        Some(segments) => segments,
+        None => return Err(spanned_error!(url.into_span(), "cannot-be-a-base URLs are not allowed")),
+    };
+
+    let warp_home = match home::home_dir() {
+        Some(dir) => dir.join(".warp"),
+        None => return Err(spanned_error!(span, "failed to fetch home directory while cloning git repository")),
+    };
+
+    let mut repo_dir: PathBuf = warp_home.join("git").join(host).into();
+    repo_dir.extend(path_segments);
+
+    if !repo_dir.exists().await {
+        if let Err(err) = async_std::fs::create_dir_all(&repo_dir).await {
+            return Err(spanned_error!(span, "unable to create package directory: {err}"));
         }
     }
 
-    todo!()
+    let mut builder = RepoBuilder::new();
+    if let Some(branch) = branch {
+        builder.branch(&branch);
+    }
+
+    let repo = match builder.clone(&url.as_str(), repo_dir.as_path().into()) {
+        Ok(repo) => repo,
+        Err(err) => return Err(spanned_error!(span, "unable to clone git repository: {err}"))
+    };
+
+    if let Some(hash) = commit_hash {
+
+        let commit = match repo.find_commit_by_prefix(&hash) {
+            Ok(commit) => commit,
+            Err(err) => return Err(spanned_error!(hash.into_span(), "unable to find commit: {err}")),
+        };
+
+        match repo.checkout_tree(commit.as_object(), None) {
+            Ok(_) => {},
+            Err(err) => return Err(spanned_error!(hash.into_span(), "failed to checkout to commit: {err}")),
+        }
+    }
+
+    Ok(repo_dir)
 }
