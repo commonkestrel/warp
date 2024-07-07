@@ -1,12 +1,12 @@
 use crate::{build::syntax::ast::Mutability, diagnostic::Diagnostic, span::Spanned};
 
 pub mod weak {
-    pub mod ast;
+    pub mod hir;
     pub mod lib;
 }
 
 pub mod strong {
-    pub mod ast;
+    pub mod mir;
 }
 
 pub fn resolve() -> Result<Namespace, Diagnostic> {

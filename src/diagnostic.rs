@@ -10,6 +10,7 @@ use std::sync::Arc;
 const BUG_MESSAGE: &str =
     "This is a bug. Please report it at `https://github.com/commonkestrel/warp/issues`";
 
+#[must_use = "Diagnostics should either be emitted with `emit` or `sync_emit` or stored for later use"]
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     level: Level,
