@@ -465,6 +465,10 @@ impl<T, S> Punctuated<T, S> {
                 .chain(self.last.iter()),
         )
     }
+
+    pub fn to_vec(self) -> Vec<T> {
+        self.inner.into_iter().map(|item| item.0).chain(self.last.into_iter()).collect()
+    }
 }
 
 impl<T: Parsable, S: Parsable> Parsable for Punctuated<T, S> {

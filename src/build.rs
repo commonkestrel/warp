@@ -9,7 +9,7 @@ use crate::{diagnostic::Reporter, error, span::Spanned};
 
 mod frontend {
     pub mod uncaught_error;
-    pub mod typed;
+    pub mod inference;
 }
 
 mod syntax {
