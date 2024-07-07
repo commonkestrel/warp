@@ -118,7 +118,7 @@ pub enum Token {
     #[token("while", |_| Keyword::While)]
     #[token("break", |_| Keyword::Break)]
     #[token("continue", |_| Keyword::Continue)]
-    #[token("namespace", |_| Keyword::Namespace)]
+    #[token("subspace", |_| Keyword::Subspace)]
     #[token("as", |_| Keyword::As)]
     Keyword(Keyword),
 
@@ -325,7 +325,7 @@ pub enum Keyword {
     While,
     Break,
     Continue,
-    Namespace,
+    Subspace,
     As,
 }
 
@@ -350,7 +350,7 @@ impl Keyword {
             Keyword::While => "keyword `while`",
             Keyword::Break => "keyword `break`",
             Keyword::Continue => "keyword `continue`",
-            Keyword::Namespace => "keyword `namespace`",
+            Keyword::Subspace => "keyword `subspace`",
             Keyword::As => "keyword `as`",
         }
     }

@@ -82,18 +82,49 @@ They accept parameters and can be called anywhere in your code, and will always 
 Functions can return values, and must always contain a return statement.
 If the function's return type is `()` or `void`, you can return without a value.
 
-## Namespaces
+## Conditionals & Loops
 
-Namespaces work similarly to modules in Rust.
-Inline namespaces are created with `namespace {identifier} {}`.
-If instead of braces and your namespace contents, you place a semicolon,
-Warp will search for a namespace file in the current namespace's subfolder.
+The only conditional in Warp is the `if` statement.
+These statements allow you to only run code if a specific condition is satisfied.
+If statements can also contain an `else` clause,
+which specifies code to run if the condition is not satisfied.
 
-Namespace subfolders allow for a sense of hierarchy in the file tree.
-The project's subfolder is the project root, and all sub-namespaces' subfolders are the identifier of the namespace.
+If statements have the following syntax:
+```rs
+if (/* boolean condition */) {
+    /* true content */
+} else {
+    /* false content */
+}
+```
+
+These conditionals are used in loops, those being the `for` and `while` loops.
+While loops allow a block of code to run over and over for as long as a condition is satisfied.
+Their syntax is the following:
+```rs
+while (/* boolean condition */) {
+    /* while true content */
+}
+```
+
+For loops are similar to `while` loops, but offer a more convenient way to run a loop a specific number of times.
+For loops have three components, and initializer, a condition, and an update.
+The initializer is run before the loop starts, and is used to initialize the loop's state.
+The condition is a boolean condition that, similar to a while loop, is checked before each run of the loop.
+The update is a block that runs after each iteration of the loop, before the condition is checked.
+
+## Subspaces
+
+Subspaces work similarly to modules in Rust.
+Inline subspaces are created with `subspace {identifier} {}`.
+If instead of braces and your subspace contents, you place a semicolon,
+Warp will search for a subspace file in the current subspace's subfolder.
+
+subspace subfolders allow for a sense of hierarchy in the file tree.
+The project's subfolder is the project root, and all subspaces' subfolders are the identifier of the subspace.
 
 For example, let's imagine a project called `main`,
-where `main.warp` contains `namespace child;`, and `child.warp` contains `namespace grandchild`.
+where `main.warp` contains `subspace child;`, and `child.warp` contains `subspace grandchild`.
 
 The file tree would look something like so:
 
@@ -128,7 +159,11 @@ You are also able to import local packages via that `path` argument:
 ```
 
 All of this allows projects to be completely stored within a single file.
-This significantly improves the readability and 
+This significantly improves the readability and compactness of projects.
+
+To create a library, all you need is a directory or repository with a file titled `lib.warp` at the project root.
+When linking your library, this is treated as the project root by the compiler.
+Anything marking `pub` in this file can be accessed by external projects.
 
 ## Visibility
 

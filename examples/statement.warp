@@ -15,8 +15,8 @@ pub fn test(hello: u32, world: void): i8 {
 
 pub fn square(x: u16): u16 return x*x
 
-namespace child {
+subspace child {
     prot progmem SIN: [i8] = [0, 1, 0, -1];
 }
 
-namespace lib;
+subspace lib;

@@ -138,7 +138,7 @@ impl Namespace {
     
                     cursor.step();
                 }
-                Token::Keyword(Keyword::Namespace) => {
+                Token::Keyword(Keyword::Subspace) => {
                     cursor.step();
                     let ident = match cursor.parse::<Spanned<Ident>>() {
                         Ok(ident) => ident,

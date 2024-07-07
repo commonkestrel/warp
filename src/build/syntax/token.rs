@@ -45,7 +45,7 @@ macro_rules! Token {
     [while] => {$crate::build::syntax::token::While};
     [break] => {$crate::build::syntax::token::Break};
     [continue] => {$crate::build::syntax::token::Continue};
-    [namespace] => {$crate::build::syntax::token::Namespace};
+    [subspace] => {$crate::build::syntax::token::Subspace};
     [as] => {$crate::build::syntax::token::As};
     ["("] => {$crate::build::syntax::token::OpenParen};
     [")"] => {$crate::build::syntax::token::CloseParen};
@@ -196,7 +196,7 @@ parsable! {
     "keyword `while`" : Keyword(Keyword::While) => While,
     "keyword `break`" : Keyword(Keyword::Break) => Break,
     "keyword `continue`" : Keyword(Keyword::Continue) => Continue,
-    "keyword `namespace`" : Keyword(Keyword::Namespace) => Namespace,
+    "keyword `subspace`" : Keyword(Keyword::Subspace) => Subspace,
     "keyword `as`" : Keyword(Keyword::As) => As,
 }
 
