@@ -9,7 +9,7 @@ use crate::{
         frontend::{inference::Type, uncaught_error::UncaughtUnwrap},
         symbol_table::SymbolTable,
         syntax::{
-            ast::{BinaryOp, Expr, Mutability, Path, Statement, UnaryOp},
+            ast::{BinaryOp, Expr, Mutability, Path, PathSegment, Statement, UnaryOp},
             parse::{Namespace, Visibility},
             token::Ident,
         },
@@ -21,19 +21,21 @@ use crate::{
 
 use super::lib::resolve_lib;
 
-pub struct Database {
+pub struct UnresolvedDb {
     items: HashMap<Ident, Visible<Arc<Spanned<Item>>>>,
+    imports: HashMap<PathSegment, Visible<Arc<Spanned<Path>>>>,
     libs: HashMap<Ident, Spanned<PathBuf>>,
 }
 
-impl Database {
-    pub async fn resolve(
+impl UnresolvedDb {
+    pub async fn compile(
         src: Namespace,
         symbol_table: SymbolTable,
-        libraries: &mut HashMap<PathBuf, Database>,
+        libraries: &mut HashMap<PathBuf, UnresolvedDb>,
         reporter: Reporter,
-    ) -> Database {
+    ) -> UnresolvedDb {
         let mut items = HashMap::new();
+        let mut imports = HashMap::new();
         let mut libs = HashMap::new();
 
         for (ident, path) in src.lib_imports {
@@ -110,11 +112,15 @@ impl Database {
             items.insert(ident, Visible::new(ident_span, vis, function));
         }
 
-        for (spanned, vis) in src.imports {
-            let (path, path_span) = spanned.deconstruct();
+        for (path, vis) in src.imports {
+            let (ident, ident_span) = path.end().clone().deconstruct();
+
+            let import = Arc::new(path);
+
+            imports.insert(ident, Visible::new(ident_span, vis, import));
         }
 
-        Database { items, libs }
+        UnresolvedDb { items, imports, libs }
     }
 
     pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<Arc<Spanned<Item>>>, Diagnostic> {
@@ -128,10 +134,11 @@ impl Database {
     }
 }
 
-impl Default for Database {
+impl Default for UnresolvedDb {
     fn default() -> Self {
-        Database {
+        UnresolvedDb {
             items: HashMap::new(),
+            imports: HashMap::new(),
             libs: HashMap::new(),
         }
     }
@@ -179,7 +186,7 @@ pub enum Item {
     Const(Expr),
     Static(Static),
     Progmem(Progmem),
-    Subspace(Database),
+    Subspace(UnresolvedDb),
 }
 
 impl Item {

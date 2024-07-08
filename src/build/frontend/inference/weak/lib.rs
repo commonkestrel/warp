@@ -13,15 +13,15 @@ use crate::{
     spanned_error,
 };
 
-use super::hir::Database;
+use super::unresolved::UnresolvedDb;
 
 pub async fn resolve_lib(
     root_path: PathBuf,
     span: &Span,
-    libs: &mut HashMap<PathBuf, Database>,
+    libs: &mut HashMap<PathBuf, UnresolvedDb>,
     symbol_table: SymbolTable,
     reporter: &Reporter,
-) -> Database {
+) -> UnresolvedDb {
     let file_path = root_path.join("lib.warp");
     let file_name = file_path.to_string_lossy().replace('\\', "/");
     let file = match File::open(&file_path).await {
@@ -34,7 +34,7 @@ pub async fn resolve_lib(
                     err
                 ))
                 .await;
-            return Database::default();
+            return UnresolvedDb::default();
         }
     };
 
@@ -43,7 +43,7 @@ pub async fn resolve_lib(
         Err(errors) => {
             reporter.report_all(errors).await;
 
-            return Database::default();
+            return UnresolvedDb::default();
         }
     };
 
@@ -61,9 +61,9 @@ pub async fn resolve_lib(
         Ok(namespace) => namespace,
         Err(reporter) => {
             reporter.emit_all().await;
-            return Database::default();
+            return UnresolvedDb::default();
         }
     };
 
-    Database::resolve(namespace, lexed.symbol_table, libs, reporter).await
+    UnresolvedDb::compile(namespace, lexed.symbol_table, libs, reporter).await
 }

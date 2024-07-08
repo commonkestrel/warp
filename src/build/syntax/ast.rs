@@ -1032,16 +1032,26 @@ impl Parsable for Spanned<Expr> {
 
 #[derive(Debug, Clone)]
 pub struct Path {
-    start: Spanned<PathStart>,
+    start: Spanned<PathSegment>,
     segments: Vec<Spanned<Ident>>,
+}
+
+impl Path {
+    pub fn end(&self) -> Spanned<PathSegment> {
+        match self.segments.last() {
+            Some(last) => {
+                let ident = last.inner();
+                let span = last.span().clone();
+                Spanned::new(PathSegment::Ident(*ident), span)
+            }
+            None => self.start.clone()
+        }
+    }
 }
 
 impl Parsable for Spanned<Path> {
     fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
-        let peek = cursor.peek();
-
-        let start: Spanned<PathStart> = cursor.parse()?;
-
+        let start: Spanned<PathSegment> = cursor.parse()?;
         let mut segments: Vec<Spanned<Ident>> = Vec::new();
 
         while !cursor.at_end() {
@@ -1091,27 +1101,27 @@ impl Parsable for Spanned<Path> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum PathStart {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PathSegment {
     Ident(Ident),
     Super,
     Root,
 }
 
-impl Parsable for Spanned<PathStart> {
+impl Parsable for Spanned<PathSegment> {
     fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
         let peek = cursor.peek();
 
         let start = match peek.map(Spanned::inner) {
             Some(Token::Ident(id)) => {
                 let ident = Ident { symbol: *id };
-                Spanned::new(PathStart::Ident(ident), peek.unwrap().span().clone())
+                Spanned::new(PathSegment::Ident(ident), peek.unwrap().span().clone())
             }
             Some(Token::Keyword(Keyword::Super)) => {
-                Spanned::new(PathStart::Super, peek.unwrap().span().clone())
+                Spanned::new(PathSegment::Super, peek.unwrap().span().clone())
             }
             Some(Token::Keyword(Keyword::Root)) => {
-                Spanned::new(PathStart::Root, peek.unwrap().span().clone())
+                Spanned::new(PathSegment::Root, peek.unwrap().span().clone())
             }
             Some(tok) => {
                 return Err(spanned_error!(

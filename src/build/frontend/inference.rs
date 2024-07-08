@@ -1,7 +1,7 @@
 use crate::{build::syntax::ast::Mutability, diagnostic::Diagnostic, span::Spanned};
 
 pub mod weak {
-    pub mod hir;
+    pub mod unresolved;
     pub mod lib;
 }
 
