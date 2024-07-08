@@ -47,7 +47,7 @@ pub struct Namespace {
     pub subdir: PathBuf,
     pub lib_imports: Vec<(Spanned<Ident>, PathBuf)>,
     pub functions: Vec<(Spanned<Function>, Visibility)>,
-    pub imports: Vec<(Spanned<Path>, Visibility)>,
+    pub imports: Vec<Spanned<Path>>,
     pub constants: Vec<(Spanned<Const>, Visibility)>,
     pub statics: Vec<(Spanned<Static>, Visibility)>,
     pub progmem: Vec<(Spanned<Progmem>, Visibility)>,
@@ -85,10 +85,13 @@ impl Namespace {
                     }
                 },
                 Token::Keyword(Keyword::Import) => {
+                    if visibility != Visibility::Private {
+                        cursor.reporter().report(spanned_error!(tok.span().clone(), "imports cannot ")).await;
+                    }
                     cursor.step();
-
+                    
                     match cursor.parse() {
-                        Ok(path) => namespace.imports.push((path, visibility)),
+                        Ok(path) => namespace.imports.push(path),
                         Err(err) => {
                             cursor.reporter().report(err).await;
                             cursor.seek(&Token::Punctuation(Punctuation::Semicolon));

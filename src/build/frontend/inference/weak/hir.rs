@@ -6,7 +6,7 @@ use slotmap::{new_key_type, SlotMap};
 use crate::{
     build::{
         ascii::AsciiStr,
-        frontend::{inference::Type, uncaught_error::UncaughtUnwrap},
+        frontend::{inference::{Type, Visible}, uncaught_error::UncaughtUnwrap},
         symbol_table::SymbolTable,
         syntax::{
             ast::{BinaryOp, Expr, Mutability, Path, PathSegment, Statement, UnaryOp},
@@ -21,9 +21,10 @@ use crate::{
 
 use super::lib::resolve_lib;
 
+#[derive(Debug, Clone)]
 pub struct UnresolvedDb {
     items: HashMap<Ident, Visible<Arc<Spanned<Item>>>>,
-    imports: HashMap<PathSegment, Visible<Arc<Spanned<Path>>>>,
+    imports: HashMap<PathSegment, (Span, Spanned<Path>)>,
     libs: HashMap<Ident, Spanned<PathBuf>>,
 }
 
@@ -112,12 +113,12 @@ impl UnresolvedDb {
             items.insert(ident, Visible::new(ident_span, vis, function));
         }
 
-        for (path, vis) in src.imports {
+        for path in src.imports {
             let (ident, ident_span) = path.end().clone().deconstruct();
 
-            let import = Arc::new(path);
+            let import = path;
 
-            imports.insert(ident, Visible::new(ident_span, vis, import));
+            imports.insert(ident, (ident_span, import));
         }
 
         for (spanned, vis) in src.constants {
@@ -189,42 +190,6 @@ impl Default for UnresolvedDb {
 }
 
 #[derive(Debug, Clone)]
-pub struct Visible<T> {
-    ident_span: Span,
-    visibility: Visibility,
-    inner: T,
-}
-
-impl<T> Visible<T> {
-    pub fn new(ident_span: Span, visibility: Visibility, inner: T) -> Self {
-        Self {
-            ident_span,
-            visibility,
-            inner,
-        }
-    }
-
-    pub fn ident_span(&self) -> &Span {
-        &self.ident_span
-    }
-
-    pub fn into_ident_span(self) -> Span {
-        self.ident_span
-    }
-
-    pub fn visibility(&self) -> Visibility {
-        self.visibility
-    }
-
-    pub fn inner(&self) -> &T {
-        &self.inner
-    }
-
-    pub fn into_inner(self) -> T {
-        self.inner
-    }
-}
-
 pub enum Item {
     Fn(Function),
     Const(Spanned<Expr>),

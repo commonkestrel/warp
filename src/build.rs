@@ -1,7 +1,8 @@
-use std::{env, path::PathBuf, process::ExitCode};
+use std::{collections::HashMap, env, path::PathBuf, process::ExitCode};
 
 use async_std::{fs::File, io::WriteExt};
 use clio::{Input, Output};
+use frontend::inference::{weak::hir::UnresolvedDb, Database};
 use symbol_table::SymbolTable;
 use syntax::{
     ast::Function,
@@ -81,11 +82,12 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
         },
     };
 
+    let reporter = Reporter::new();
     let namespace = match parse(
         &lexed.stream,
         lexed.source,
         lexed.lookup,
-        Reporter::new(),
+        reporter.clone(),
         &lexed.symbol_table,
         root_dir.into(),
     )
@@ -98,8 +100,11 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
         }
     };
 
+    let mut libs = HashMap::new();
+    let db = UnresolvedDb::compile(namespace, lexed.symbol_table, &mut libs, reporter.clone()).await;
+
     match File::create(output).await {
-        Ok(mut file) => match write!(file, "{:#?}", namespace).await {
+        Ok(mut file) => match write!(file, "{:#?}", db).await {
             Ok(_) => return ExitCode::SUCCESS,
             Err(err) => {
                 error!("unable to write to output file: {}", err)

@@ -1,19 +1,13 @@
-use crate::{build::syntax::ast::Mutability, diagnostic::Diagnostic, span::Spanned};
+use crate::{build::syntax::{ast::Mutability, parse::Visibility}, diagnostic::Diagnostic, span::{Span, Spanned}};
 
 pub mod weak {
-    pub mod unresolved;
+    pub mod hir;
     pub mod lib;
 }
 
 pub mod strong {
     pub mod mir;
 }
-
-pub fn resolve() -> Result<Namespace, Diagnostic> {
-    todo!()
-}
-
-pub struct Namespace {}
 
 #[derive(Debug, Clone)]
 pub struct Database {}
@@ -42,4 +36,41 @@ pub enum Type {
         parameters: Vec<Spanned<Type>>,
         return_type: Box<Spanned<Type>>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub struct Visible<T> {
+    ident_span: Span,
+    visibility: Visibility,
+    inner: T,
+}
+
+impl<T> Visible<T> {
+    pub fn new(ident_span: Span, visibility: Visibility, inner: T) -> Self {
+        Self {
+            ident_span,
+            visibility,
+            inner,
+        }
+    }
+
+    pub fn ident_span(&self) -> &Span {
+        &self.ident_span
+    }
+
+    pub fn into_ident_span(self) -> Span {
+        self.ident_span
+    }
+
+    pub fn visibility(&self) -> Visibility {
+        self.visibility
+    }
+
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+
+    pub fn into_inner(self) -> T {
+        self.inner
+    }
 }

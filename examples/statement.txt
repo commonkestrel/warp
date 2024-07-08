@@ -1,96 +1,174 @@
-Namespace {
-    subdir: PathBuf {
-        inner: "examples",
+UnresolvedDb {
+    items: {
+        Ident {
+            symbol: SymbolRef(
+                4,
+            ),
+        }: Visible {
+            ident_span: Span {
+                source_name: "examples/statement.warp",
+                lookup: Lookup {
+                    source: "//! lib std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 266f7a5)\nimport std::alloc::vec;\n\nconst SOMETHING = 42;\n\npub fn test(hello: u32, world: void): i8 {\n    let x = 23;\n\n    mut x: u16 = 3 * sizeof!(u8);\n\n    let v = vec::new(sizeof!(u8));\n\n    let y: fn(u16): u32 = hello;\n}\n\npub fn square(x: u16): u16 return x*x\n\nsubspace child {\n    prot progmem SIN: [i8] = [0, 1, 0, -1];\n}\n\nsubspace lib;\n",
+                    heads: [
+                        0,
+                        100,
+                        124,
+                        125,
+                        147,
+                        148,
+                        191,
+                        207,
+                        208,
+                        242,
+                        243,
+                        278,
+                        279,
+                        312,
+                        314,
+                        315,
+                        353,
+                        354,
+                        371,
+                        415,
+                        417,
+                        418,
+                        432,
+                    ],
+                },
+                location: 155..159,
+            },
+            visibility: Public,
+            inner: Fn(Function { parameters: [Parameter { mutability: Immutable, ident: Ident { symbol: SymbolRef(5) }, ty: U32 }, Parameter { mutability: Immutable, ident: Ident { symbol: SymbolRef(6) }, ty: Void }], return_type: I8, body: Block([Var { mutability: Immutable, ident: Ident { symbol: SymbolRef(7) }, ty: None, assignment: Immediate(23) }, Var { mutability: Mutable, ident: Ident { symbol: SymbolRef(7) }, ty: Some(U16), assignment: BinaryOp(BinOp { lhs: Immediate(3), op: Mul, rhs: Sizeof(U8) }) }, Var { mutability: Immutable, ident: Ident { symbol: SymbolRef(8) }, ty: None, assignment: Call(Reference(Path { start: Ident(Ident { symbol: SymbolRef(2) }), segments: [Ident { symbol: SymbolRef(9) }] }), Punctuated { inner: [], last: Some(Sizeof(U8)) }) }, Var { mutability: Immutable, ident: Ident { symbol: SymbolRef(10) }, ty: Some(Fn { parameters: Punctuated { inner: [], last: Some(U16) }, return_type: U32 }), assignment: Reference(Path { start: Ident(Ident { symbol: SymbolRef(5) }), segments: [] }) }]) }),
+        },
+        Ident {
+            symbol: SymbolRef(
+                11,
+            ),
+        }: Visible {
+            ident_span: Span {
+                source_name: "examples/statement.warp",
+                lookup: Lookup {
+                    source: "//! lib std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 266f7a5)\nimport std::alloc::vec;\n\nconst SOMETHING = 42;\n\npub fn test(hello: u32, world: void): i8 {\n    let x = 23;\n\n    mut x: u16 = 3 * sizeof!(u8);\n\n    let v = vec::new(sizeof!(u8));\n\n    let y: fn(u16): u32 = hello;\n}\n\npub fn square(x: u16): u16 return x*x\n\nsubspace child {\n    prot progmem SIN: [i8] = [0, 1, 0, -1];\n}\n\nsubspace lib;\n",
+                    heads: [
+                        0,
+                        100,
+                        124,
+                        125,
+                        147,
+                        148,
+                        191,
+                        207,
+                        208,
+                        242,
+                        243,
+                        278,
+                        279,
+                        312,
+                        314,
+                        315,
+                        353,
+                        354,
+                        371,
+                        415,
+                        417,
+                        418,
+                        432,
+                    ],
+                },
+                location: 322..328,
+            },
+            visibility: Public,
+            inner: Fn(Function { parameters: [Parameter { mutability: Immutable, ident: Ident { symbol: SymbolRef(7) }, ty: U16 }], return_type: U16, body: Return(BinaryOp(BinOp { lhs: Reference(Path { start: Ident(Ident { symbol: SymbolRef(7) }), segments: [] }), op: Mul, rhs: Reference(Path { start: Ident(Ident { symbol: SymbolRef(7) }), segments: [] }) })) }),
+        },
+        Ident {
+            symbol: SymbolRef(
+                3,
+            ),
+        }: Visible {
+            ident_span: Span {
+                source_name: "examples/statement.warp",
+                lookup: Lookup {
+                    source: "//! lib std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 266f7a5)\nimport std::alloc::vec;\n\nconst SOMETHING = 42;\n\npub fn test(hello: u32, world: void): i8 {\n    let x = 23;\n\n    mut x: u16 = 3 * sizeof!(u8);\n\n    let v = vec::new(sizeof!(u8));\n\n    let y: fn(u16): u32 = hello;\n}\n\npub fn square(x: u16): u16 return x*x\n\nsubspace child {\n    prot progmem SIN: [i8] = [0, 1, 0, -1];\n}\n\nsubspace lib;\n",
+                    heads: [
+                        0,
+                        100,
+                        124,
+                        125,
+                        147,
+                        148,
+                        191,
+                        207,
+                        208,
+                        242,
+                        243,
+                        278,
+                        279,
+                        312,
+                        314,
+                        315,
+                        353,
+                        354,
+                        371,
+                        415,
+                        417,
+                        418,
+                        432,
+                    ],
+                },
+                location: 131..140,
+            },
+            visibility: Private,
+            inner: Const(Immediate(42)),
+        },
     },
-    lib_imports: [
-        (
+    imports: {
+        Ident(
             Ident {
                 symbol: SymbolRef(
-                    0,
+                    2,
                 ),
             },
-            PathBuf {
-                inner: "C:\\Users\\Jett\\.warp\\git\\github.com\\commonkestrel\\warp-std",
+        ): (
+            Span {
+                source_name: "examples/statement.warp",
+                lookup: Lookup {
+                    source: "//! lib std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 266f7a5)\nimport std::alloc::vec;\n\nconst SOMETHING = 42;\n\npub fn test(hello: u32, world: void): i8 {\n    let x = 23;\n\n    mut x: u16 = 3 * sizeof!(u8);\n\n    let v = vec::new(sizeof!(u8));\n\n    let y: fn(u16): u32 = hello;\n}\n\npub fn square(x: u16): u16 return x*x\n\nsubspace child {\n    prot progmem SIN: [i8] = [0, 1, 0, -1];\n}\n\nsubspace lib;\n",
+                    heads: [
+                        0,
+                        100,
+                        124,
+                        125,
+                        147,
+                        148,
+                        191,
+                        207,
+                        208,
+                        242,
+                        243,
+                        278,
+                        279,
+                        312,
+                        314,
+                        315,
+                        353,
+                        354,
+                        371,
+                        415,
+                        417,
+                        418,
+                        432,
+                    ],
+                },
+                location: 119..122,
             },
-        ),
-    ],
-    functions: [
-        (
-            Function { ident: Ident { symbol: SymbolRef(4) }, parameters: Punctuated { inner: [(Parameter { ident: Ident { symbol: SymbolRef(5) }, ty: U32 }, Comma)], last: Some(Parameter { ident: Ident { symbol: SymbolRef(6) }, ty: Void }) }, return_type: I8, body: Block([Var { mutability: Immutable, ident: Ident { symbol: SymbolRef(7) }, ty: None, assignment: Immediate(23) }, Var { mutability: Mutable, ident: Ident { symbol: SymbolRef(7) }, ty: Some(U16), assignment: BinaryOp(BinOp { lhs: Immediate(3), op: Mul, rhs: Sizeof(U8) }) }, Var { mutability: Immutable, ident: Ident { symbol: SymbolRef(8) }, ty: None, assignment: Call(Reference(Path { start: Ident(Ident { symbol: SymbolRef(2) }), segments: [Ident { symbol: SymbolRef(9) }] }), Punctuated { inner: [], last: Some(Sizeof(U8)) }) }, Var { mutability: Immutable, ident: Ident { symbol: SymbolRef(10) }, ty: Some(Fn { parameters: Punctuated { inner: [], last: Some(U16) }, return_type: U32 }), assignment: Reference(Path { start: Ident(Ident { symbol: SymbolRef(5) }), segments: [] }) }]) },
-            Public,
-        ),
-        (
-            Function { ident: Ident { symbol: SymbolRef(11) }, parameters: Punctuated { inner: [], last: Some(Parameter { ident: Ident { symbol: SymbolRef(7) }, ty: U16 }) }, return_type: U16, body: Return(BinaryOp(BinOp { lhs: Reference(Path { start: Ident(Ident { symbol: SymbolRef(7) }), segments: [] }), op: Mul, rhs: Reference(Path { start: Ident(Ident { symbol: SymbolRef(7) }), segments: [] }) })) },
-            Public,
-        ),
-    ],
-    imports: [
-        (
             Path { start: Ident(Ident { symbol: SymbolRef(0) }), segments: [Ident { symbol: SymbolRef(1) }, Ident { symbol: SymbolRef(2) }] },
-            Private,
         ),
-    ],
-    constants: [
-        (
-            Const { ident: Ident { symbol: SymbolRef(3) }, value: Immediate(42) },
-            Private,
-        ),
-    ],
-    statics: [],
-    progmem: [],
-    subspaces: [
-        (
-            Ident { symbol: SymbolRef(12) },
-            Namespace {
-                subdir: PathBuf {
-                    inner: "examples\\child",
-                },
-                lib_imports: [],
-                functions: [],
-                imports: [],
-                constants: [],
-                statics: [],
-                progmem: [
-                    (
-                        Progmem { ident: Ident { symbol: SymbolRef(13) }, ty: Array(I8), value: Array(Punctuated { inner: [(Immediate(0), Comma), (Immediate(1), Comma), (Immediate(0), Comma)], last: Some(Immediate(-1)) }) },
-                        Protected,
-                    ),
-                ],
-                subspaces: [],
-            },
-            Private,
-        ),
-        (
-            Ident { symbol: SymbolRef(14) },
-            Namespace {
-                subdir: PathBuf {
-                    inner: "examples\\lib",
-                },
-                lib_imports: [
-                    (
-                        Ident {
-                            symbol: SymbolRef(
-                                0,
-                            ),
-                        },
-                        PathBuf {
-                            inner: "C:\\Users\\Jett\\.warp\\git\\github.com\\commonkestrel\\warp-std",
-                        },
-                    ),
-                ],
-                functions: [],
-                imports: [
-                    (
-                        Path { start: Ident(Ident { symbol: SymbolRef(0) }), segments: [Ident { symbol: SymbolRef(1) }, Ident { symbol: SymbolRef(2) }] },
-                        Private,
-                    ),
-                ],
-                constants: [],
-                statics: [],
-                progmem: [],
-                subspaces: [],
-            },
-            Private,
-        ),
-    ],
+    },
+    libs: {
+        Ident {
+            symbol: SymbolRef(
+                0,
+            ),
+        }: PathBuf { inner: "\\\\?\\C:\\Users\\Jett\\.warp\\git\\github.com\\commonkestrel\\warp-std" },
+    },
 }

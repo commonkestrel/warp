@@ -6,14 +6,14 @@ use async_std::{
 };
 
 use crate::{
-    build::{frontend::inference::Namespace, symbol_table::SymbolTable, syntax},
+    build::{symbol_table::SymbolTable, syntax},
     diagnostic::Reporter,
     error,
     span::Span,
     spanned_error,
 };
 
-use super::unresolved::UnresolvedDb;
+use super::hir::UnresolvedDb;
 
 pub async fn resolve_lib(
     root_path: PathBuf,
@@ -65,5 +65,5 @@ pub async fn resolve_lib(
         }
     };
 
-    UnresolvedDb::compile(namespace, lexed.symbol_table, libs, reporter).await
+    Box::pin(UnresolvedDb::compile(namespace, lexed.symbol_table, libs, reporter)).await
 }

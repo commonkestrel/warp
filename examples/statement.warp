@@ -1,4 +1,4 @@
-//! lib std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 5a6bb6d)
+//! lib std = git(url = https://github.com/commonkestrel/warp-std, branch = main, commit = 266f7a5)
 import std::alloc::vec;
 
 const SOMETHING = 42;
