@@ -95,11 +95,17 @@ impl<T> borrow::BorrowMut<T> for Spanned<T> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Span {
     source_name: Arc<String>,
     lookup: Arc<Lookup>,
     location: Range<usize>,
+}
+
+impl Debug for Span {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Span").field("source", &self.source_name).field("location", &self.location).finish()
+    }
 }
 
 impl Span {

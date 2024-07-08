@@ -220,7 +220,7 @@ pub enum Statement {
     While(Box<WhileLoop>),
     Break,
     Continue,
-    Return(Spanned<Expr>),
+    Return(Option<Spanned<Expr>>),
     Asm(Parenthesized<Spanned<LitString>>),
     Var {
         mutability: Mutability,
@@ -321,10 +321,13 @@ impl Statement {
             Token::Keyword(Keyword::Break) => Spanned::new(Statement::Break, span),
             Token::Keyword(Keyword::Continue) => Spanned::new(Statement::Continue, span),
             Token::Keyword(Keyword::Return) => {
+                if cursor.check(&Token::Punctuation(Punctuation::Semicolon)) {
+                    return Spanned::new(Statement::Return(None), span);
+                }
                 let value = Expr::parse_assignment(cursor);
 
                 let return_span = span.to(value.span());
-                Spanned::new(Statement::Return(value), return_span)
+                Spanned::new(Statement::Return(Some(value)), return_span)
             }
             Token::Delimeter(Delimeter::OpenBrace) => {
                 let mut statements = Vec::new();
@@ -778,7 +781,10 @@ impl Expr {
                         match tok.inner() {
                             Token::Delimeter(Delimeter::CloseParen) => break,
                             Token::Punctuation(Punctuation::Comma) => match last_param.take() {
-                                Some(param) => params_inner.push((param, Token![,])),
+                                Some(param) => {
+                                    params_inner.push((param, Token![,]));
+                                    cursor.step();
+                                },
                                 None => {
                                     cursor.reporter().report_sync(spanned_error!(
                                         tok.span().clone(),
