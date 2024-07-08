@@ -90,10 +90,10 @@ impl Parsable for Spanned<Progmem> {
 
 #[derive(Debug, Clone)]
 pub struct Function {
-    ident: Spanned<Ident>,
-    parameters: Punctuated<Spanned<Parameter>, Token![,]>,
-    return_type: Spanned<Type>,
-    body: Spanned<Statement>,
+    pub ident: Spanned<Ident>,
+    pub parameters: Punctuated<Spanned<Parameter>, Token![,]>,
+    pub return_type: Spanned<Type>,
+    pub body: Spanned<Statement>,
 }
 
 impl Parsable for Spanned<Function> {
@@ -173,18 +173,26 @@ impl Parsable for Spanned<Function> {
 
 #[derive(Debug, Clone)]
 pub struct Parameter {
-    ident: Spanned<Ident>,
-    ty: Spanned<Type>,
+    pub mutability: Mutability,
+    pub ident: Spanned<Ident>,
+    pub ty: Spanned<Type>,
 }
 
 impl Parsable for Spanned<Parameter> {
     fn parse(cursor: &mut Cursor) -> Result<Self, crate::diagnostic::Diagnostic> {
+        let mutability = if cursor.check(&Token::Keyword(Keyword::Mut)) {
+            cursor.step();
+            Mutability::Mutable
+        } else {
+            Mutability::Immutable
+        };
+
         let ident: Spanned<Ident> = cursor.parse()?;
         let _: Token![:] = cursor.parse()?;
         let ty = Type::parse(cursor);
 
         let param_span = ident.span().to(ty.span());
-        Ok(Spanned::new(Parameter { ident, ty }, param_span))
+        Ok(Spanned::new(Parameter { mutability, ident, ty }, param_span))
     }
 
     fn description(&self) -> &'static str {

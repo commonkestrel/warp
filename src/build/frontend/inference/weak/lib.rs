@@ -6,13 +6,13 @@ use crate::{build::{frontend::inference::Namespace, symbol_table::SymbolTable, s
 
 use super::hir::Database;
 
-pub async fn resolve_lib(root_path: PathBuf, span: Span, libs: &mut HashMap<PathBuf, Database>, symbol_table: SymbolTable, reporter: &Reporter) -> Database {
+pub async fn resolve_lib(root_path: PathBuf, span: &Span, libs: &mut HashMap<PathBuf, Database>, symbol_table: SymbolTable, reporter: &Reporter) -> Database {
     let file_path = root_path.join("lib.warp");
     let file_name = file_path.to_string_lossy().replace('\\', "/");
     let file = match File::open(&file_path).await {
         Ok(file) => file,
         Err(err) => {
-            reporter.report(spanned_error!(span, "unable to open input file: {}", err)).await;
+            reporter.report(spanned_error!(span.clone(), "unable to open input file: {}", err)).await;
             return Database::default();
         }
     };
