@@ -3,12 +3,12 @@ use std::{collections::HashMap, ops::Index, sync::Arc};
 use async_std::path::PathBuf;
 use slotmap::{new_key_type, SlotMap};
 
-use crate::{build::{ascii::AsciiStr, frontend::{inference::Type, uncaught_error::UncaughtUnwrap}, symbol_table::SymbolTable, syntax::{ast::{BinaryOp, Mutability, Path, Statement, UnaryOp}, parse::{Namespace, Visibility}, token::Ident}}, diagnostic::{Diagnostic, Reporter}, span::{Span, Spanned}, spanned_error};
+use crate::{build::{ascii::AsciiStr, frontend::{inference::Type, uncaught_error::UncaughtUnwrap}, symbol_table::SymbolTable, syntax::{ast::{BinaryOp, Expr, Mutability, Path, Statement, UnaryOp}, parse::{Namespace, Visibility}, token::Ident}}, diagnostic::{Diagnostic, Reporter}, span::{Span, Spanned}, spanned_error};
 
 use super::lib::resolve_lib;
 
 pub struct Database {
-    items: HashMap<Ident, Visible<Spanned<Item>>>,
+    items: HashMap<Ident, Visible<Arc<Spanned<Item>>>>,
     libs: HashMap<Ident, Spanned<PathBuf>>,
 }
 
@@ -67,17 +67,18 @@ impl Database {
                 parameters.push(Spanned::new(parameter, span));
             }
 
-            let function = Spanned::new(Item::Fn(Function {
+            let function = Arc::new(Spanned::new(Item::Fn(Function {
                 parameters,
                 return_type,
                 body: func.body,
-            }), span);
+            }), span));
 
             items.insert(ident, Visible::new(ident_span, vis, function));
         }
 
         for (spanned, vis) in src.imports {
-
+            let (path, path_span) = spanned.deconstruct();
+            
         }
 
         Database { items, libs }
@@ -127,11 +128,11 @@ impl<T> Visible<T> {
 
 pub enum Item {
     Fn(Function),
-    Const(Const),
+    Const(Expr),
     Static(Static),
     Progmem(Progmem),
-    Import(Path),
     Subspace(Database),
+    Pkg(Database),
 }
 
 impl Item {
@@ -141,31 +142,31 @@ impl Item {
             Item::Const(_) => "constant",
             Item::Static(_) => "static",
             Item::Progmem(_) => "program memory",
-            Item::Import(_) => "import",
             Item::Subspace(_) => "subspace",
+            Item::Pkg(_) => "package"
         }
     }
 }
 
-// impl Index<&Spanned<Ident>> for Item {
-//     type Output = Result<Item, Diagnostic>;
-
-//     fn index(&self, index: &Spanned<Ident>) -> &Self::Output {
-//         match self {
-//             Item::Subspace(db) => db[index],
-//             Fn(_) => Err(spanned_error!(index.span().clone(), "cannot "))
-//         }
-//     }
-// }
+impl Spanned<Item> {
+    pub fn get(&self, reachable: Visibility) -> Result<Arc<Spanned<Item>>, Diagnostic> {
+        match self.inner() {
+            _ => Err(spanned_error!(self.span().clone(), "{} is not a package or subspace", self.description()))
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
-pub struct Const {}
+pub struct Static {
+    ty: Spanned<Type>,
+    value: Spanned<Expr>,
+}
 
 #[derive(Debug, Clone)]
-pub struct Static {}
-
-#[derive(Debug, Clone)]
-pub struct Progmem {}
+pub struct Progmem {
+    ty: Spanned<Type>,
+    value: Spanned<Expr>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Function {
