@@ -120,6 +120,50 @@ impl UnresolvedDb {
             imports.insert(ident, Visible::new(ident_span, vis, import));
         }
 
+        for (spanned, vis) in src.constants {
+            let (constant, const_span) = spanned.deconstruct();
+            let (ident, ident_span) = constant.ident.deconstruct();
+
+            let expr = Arc::new(Spanned::new(Item::Const(constant.value), const_span));
+            if let Some(_) = items.insert(ident, Visible::new(ident_span.clone(), vis, expr)) {
+                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            }
+        }
+
+        for (spanned, vis) in src.statics {
+            let (stat, const_span) = spanned.deconstruct();
+            let (ident, ident_span) = stat.ident.deconstruct();
+            let ty = match stat.ty.unwrap() {
+                Ok(ty) => ty,
+                Err(err) => {
+                    reporter.report(err).await;
+                    continue;
+                }
+            };
+
+            let expr = Arc::new(Spanned::new(Item::Static(Static {ty, value: stat.value}), const_span));
+            if let Some(_) = items.insert(ident, Visible::new(ident_span.clone(), vis, expr)) {
+                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            }
+        }
+
+        for (spanned, vis) in src.progmem {
+            let (progmem, const_span) = spanned.deconstruct();
+            let (ident, ident_span) = progmem.ident.deconstruct();
+            let ty = match progmem.ty.unwrap() {
+                Ok(ty) => ty,
+                Err(err) => {
+                    reporter.report(err).await;
+                    continue;
+                }
+            };
+
+            let expr = Arc::new(Spanned::new(Item::Progmem(Progmem {ty, value: progmem.value}), const_span));
+            if let Some(_) = items.insert(ident, Visible::new(ident_span.clone(), vis, expr)) {
+                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            }
+        }
+
         UnresolvedDb { items, imports, libs }
     }
 
@@ -183,7 +227,7 @@ impl<T> Visible<T> {
 
 pub enum Item {
     Fn(Function),
-    Const(Expr),
+    Const(Spanned<Expr>),
     Static(Static),
     Progmem(Progmem),
     Subspace(UnresolvedDb),

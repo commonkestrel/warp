@@ -14,8 +14,8 @@ use super::{
 
 #[derive(Debug, Clone)]
 pub struct Const {
-    ident: Spanned<Ident>,
-    value: Spanned<Expr>,
+    pub ident: Spanned<Ident>,
+    pub value: Spanned<Expr>,
 }
 
 impl Parsable for Spanned<Const> {
@@ -36,9 +36,9 @@ impl Parsable for Spanned<Const> {
 
 #[derive(Debug, Clone)]
 pub struct Static {
-    ident: Spanned<Ident>,
-    ty: Spanned<Type>,
-    value: Spanned<Expr>,
+    pub ident: Spanned<Ident>,
+    pub ty: Spanned<Type>,
+    pub value: Spanned<Expr>,
 }
 
 impl Parsable for Spanned<Static> {
@@ -63,9 +63,9 @@ impl Parsable for Spanned<Static> {
 
 #[derive(Debug, Clone)]
 pub struct Progmem {
-    ident: Spanned<Ident>,
-    ty: Spanned<Type>,
-    value: Spanned<Expr>,
+    pub ident: Spanned<Ident>,
+    pub ty: Spanned<Type>,
+    pub value: Spanned<Expr>,
 }
 
 impl Parsable for Spanned<Progmem> {
