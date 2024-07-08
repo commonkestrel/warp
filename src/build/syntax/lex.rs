@@ -31,7 +31,11 @@ pub struct LexResult {
     pub symbol_table: SymbolTable,
 }
 
-pub async fn lex(symbol_table: SymbolTable, source: String, content: File) -> Result<LexResult, Errors> {
+pub async fn lex(
+    symbol_table: SymbolTable,
+    source: String,
+    content: File,
+) -> Result<LexResult, Errors> {
     let mut tokens = TokenStream::new();
     let mut errors = Errors::new();
     let source = Arc::new(source);

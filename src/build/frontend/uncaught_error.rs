@@ -12,8 +12,8 @@ impl UncaughtUnwrap for Spanned<syntax::ast::Type> {
     type Output = Spanned<inference::Type>;
 
     fn unwrap(self) -> Result<Self::Output, Diagnostic> {
-        use syntax::ast::Type as ST;
         use inference::Type as IT;
+        use syntax::ast::Type as ST;
         let (ty, span) = self.deconstruct();
 
         match ty {
@@ -31,7 +31,13 @@ impl UncaughtUnwrap for Spanned<syntax::ast::Type> {
             ST::U64 => Ok(Spanned::new(IT::U64, span)),
             ST::I64 => Ok(Spanned::new(IT::I64, span)),
             ST::Array(ty) => Ok(Spanned::new(IT::Array(Box::new(ty.unwrap()?)), span)),
-            ST::Pointer {mutability, ty} => Ok(Spanned::new(IT::Pointer {mutability, ty: Box::new(ty.unwrap()?)}, span)),
+            ST::Pointer { mutability, ty } => Ok(Spanned::new(
+                IT::Pointer {
+                    mutability,
+                    ty: Box::new(ty.unwrap()?),
+                },
+                span,
+            )),
             ST::Tuple(types) => {
                 let mut unwrapped = Vec::new();
 
@@ -40,15 +46,24 @@ impl UncaughtUnwrap for Spanned<syntax::ast::Type> {
                 }
 
                 Ok(Spanned::new(IT::Tuple(unwrapped), span))
-            },
-            ST::Fn {parameters, return_type} => {
+            }
+            ST::Fn {
+                parameters,
+                return_type,
+            } => {
                 let mut unwrapped = Vec::new();
 
                 for param in parameters.into_values() {
                     unwrapped.push(param.unwrap()?);
                 }
 
-                Ok(Spanned::new(IT::Fn{return_type: Box::new(return_type.unwrap()?), parameters: unwrapped}, span))
+                Ok(Spanned::new(
+                    IT::Fn {
+                        return_type: Box::new(return_type.unwrap()?),
+                        parameters: unwrapped,
+                    },
+                    span,
+                ))
             }
         }
     }

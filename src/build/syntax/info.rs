@@ -176,7 +176,9 @@ impl CompInfo {
                     match field.inner().as_str() {
                         "url" => match Url::parse(&value) {
                             Ok(val) => url = Some(Spanned::new(val, value.into_span())),
-                            Err(err) => return Err(spanned_error!(value.into_span(), "invalid URL: {err}"))
+                            Err(err) => {
+                                return Err(spanned_error!(value.into_span(), "invalid URL: {err}"))
+                            }
                         },
                         "commit" => commit = Some(value),
                         "branch" => branch = Some(value),

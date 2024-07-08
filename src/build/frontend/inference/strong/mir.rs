@@ -1,4 +1,11 @@
-use crate::{build::{ascii::AsciiStr, frontend::inference::Type, syntax::ast::{BinaryOp, Path, UnaryOp}}, span::Spanned};
+use crate::{
+    build::{
+        ascii::AsciiStr,
+        frontend::inference::Type,
+        syntax::ast::{BinaryOp, Path, UnaryOp},
+    },
+    span::Spanned,
+};
 
 #[derive(Debug, Clone)]
 pub struct Typed<T: Clone> {

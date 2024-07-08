@@ -192,7 +192,14 @@ impl Parsable for Spanned<Parameter> {
         let ty = Type::parse(cursor);
 
         let param_span = ident.span().to(ty.span());
-        Ok(Spanned::new(Parameter { mutability, ident, ty }, param_span))
+        Ok(Spanned::new(
+            Parameter {
+                mutability,
+                ident,
+                ty,
+            },
+            param_span,
+        ))
     }
 
     fn description(&self) -> &'static str {
@@ -903,7 +910,7 @@ impl Expr {
                             Some(last) => {
                                 contents_inner.push((last, Token![,]));
                                 cursor.step();
-                            },
+                            }
                             None => {
                                 cursor.reporter().report_sync(spanned_error!(
                                     tok.span().clone(),
@@ -1201,7 +1208,7 @@ pub enum Type {
         ty: Box<Spanned<Type>>,
     },
     Tuple(Vec<Spanned<Type>>),
-    Array (Box<Spanned<Type>>),
+    Array(Box<Spanned<Type>>),
     Fn {
         parameters: Punctuated<Spanned<Type>, Token![,]>,
         return_type: Box<Spanned<Type>>,
@@ -1237,7 +1244,8 @@ impl Type {
                 }
                 Token::Delimeter(Delimeter::OpenBracket) => {
                     let ty = Type::parse(cursor);
-                    let close: Spanned<Token!["]"]> = inline_unwrap!(Type, cursor, Result = cursor.parse());
+                    let close: Spanned<Token!["]"]> =
+                        inline_unwrap!(Type, cursor, Result = cursor.parse());
 
                     let span = tok.span().to(close.span());
                     Spanned::new(Type::Array(Box::new(ty)), span)

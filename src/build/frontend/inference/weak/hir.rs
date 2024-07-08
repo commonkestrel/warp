@@ -3,7 +3,21 @@ use std::{collections::HashMap, ops::Index, sync::Arc};
 use async_std::path::PathBuf;
 use slotmap::{new_key_type, SlotMap};
 
-use crate::{build::{ascii::AsciiStr, frontend::{inference::Type, uncaught_error::UncaughtUnwrap}, symbol_table::SymbolTable, syntax::{ast::{BinaryOp, Expr, Mutability, Path, Statement, UnaryOp}, parse::{Namespace, Visibility}, token::Ident}}, diagnostic::{Diagnostic, Reporter}, span::{Span, Spanned}, spanned_error};
+use crate::{
+    build::{
+        ascii::AsciiStr,
+        frontend::{inference::Type, uncaught_error::UncaughtUnwrap},
+        symbol_table::SymbolTable,
+        syntax::{
+            ast::{BinaryOp, Expr, Mutability, Path, Statement, UnaryOp},
+            parse::{Namespace, Visibility},
+            token::Ident,
+        },
+    },
+    diagnostic::{Diagnostic, Reporter},
+    span::{Span, Spanned},
+    spanned_error,
+};
 
 use super::lib::resolve_lib;
 
@@ -13,7 +27,12 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn resolve(src: Namespace, symbol_table: SymbolTable, libraries: &mut HashMap<PathBuf, Database>, reporter: Reporter) -> Database {
+    pub async fn resolve(
+        src: Namespace,
+        symbol_table: SymbolTable,
+        libraries: &mut HashMap<PathBuf, Database>,
+        reporter: Reporter,
+    ) -> Database {
         let mut items = HashMap::new();
         let mut libs = HashMap::new();
 
@@ -21,13 +40,25 @@ impl Database {
             let lib_path = match path.canonicalize().await {
                 Ok(path) => path,
                 Err(err) => {
-                    reporter.report(spanned_error!(ident.into_span(), "unable to canonicalize path: {err}")).await;
+                    reporter
+                        .report(spanned_error!(
+                            ident.into_span(),
+                            "unable to canonicalize path: {err}"
+                        ))
+                        .await;
                     continue;
                 }
             };
 
             if !libraries.contains_key(&lib_path) {
-                let lib = resolve_lib(lib_path.clone(), ident.span(), libraries, symbol_table.clone(), &reporter).await;
+                let lib = resolve_lib(
+                    lib_path.clone(),
+                    ident.span(),
+                    libraries,
+                    symbol_table.clone(),
+                    &reporter,
+                )
+                .await;
                 libraries.insert(lib_path.clone(), lib);
             }
 
@@ -67,21 +98,33 @@ impl Database {
                 parameters.push(Spanned::new(parameter, span));
             }
 
-            let function = Arc::new(Spanned::new(Item::Fn(Function {
-                parameters,
-                return_type,
-                body: func.body,
-            }), span));
+            let function = Arc::new(Spanned::new(
+                Item::Fn(Function {
+                    parameters,
+                    return_type,
+                    body: func.body,
+                }),
+                span,
+            ));
 
             items.insert(ident, Visible::new(ident_span, vis, function));
         }
 
         for (spanned, vis) in src.imports {
             let (path, path_span) = spanned.deconstruct();
-            
         }
 
         Database { items, libs }
+    }
+
+    pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<Arc<Spanned<Item>>>, Diagnostic> {
+        match self.items.get(index.inner()) {
+            Some(item) => Ok(item.clone()),
+            None => Err(spanned_error!(
+                index.span().clone(),
+                "item does not exist in submodule or library"
+            )),
+        }
     }
 }
 
@@ -94,6 +137,7 @@ impl Default for Database {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Visible<T> {
     ident_span: Span,
     visibility: Visibility,
@@ -102,7 +146,11 @@ pub struct Visible<T> {
 
 impl<T> Visible<T> {
     pub fn new(ident_span: Span, visibility: Visibility, inner: T) -> Self {
-        Self {ident_span, visibility, inner}
+        Self {
+            ident_span,
+            visibility,
+            inner,
+        }
     }
 
     pub fn ident_span(&self) -> &Span {
@@ -132,7 +180,6 @@ pub enum Item {
     Static(Static),
     Progmem(Progmem),
     Subspace(Database),
-    Pkg(Database),
 }
 
 impl Item {
@@ -143,15 +190,48 @@ impl Item {
             Item::Static(_) => "static",
             Item::Progmem(_) => "program memory",
             Item::Subspace(_) => "subspace",
-            Item::Pkg(_) => "package"
         }
     }
 }
 
-impl Spanned<Item> {
-    pub fn get(&self, reachable: Visibility) -> Result<Arc<Spanned<Item>>, Diagnostic> {
-        match self.inner() {
-            _ => Err(spanned_error!(self.span().clone(), "{} is not a package or subspace", self.description()))
+impl Visible<Spanned<Item>> {
+    pub fn get(
+        &self,
+        parent: Spanned<Ident>,
+        idx: &Spanned<Ident>,
+        reachable: Visibility,
+    ) -> Result<Arc<Spanned<Item>>, Diagnostic> {
+        match self.inner().inner() {
+            Item::Subspace(db) => match db.get(idx) {
+                Ok(item) => {
+                    let visible = match item.visibility() {
+                        Visibility::Private => matches!(reachable, Visibility::Private),
+                        Visibility::Protected => {
+                            matches!(reachable, Visibility::Private | Visibility::Protected)
+                        }
+                        Visibility::Public => matches!(
+                            reachable,
+                            Visibility::Private | Visibility::Protected | Visibility::Public
+                        ),
+                    };
+
+                    if visible {
+                        Ok(item.into_inner())
+                    } else {
+                        Err(spanned_error!(
+                            idx.span().clone(),
+                            "item is not visible to current space"
+                        )
+                        .with_note(format!("item is of {} visibility", item.visibility())))
+                    }
+                }
+                Err(err) => Err(err),
+            },
+            _ => Err(spanned_error!(
+                parent.into_span(),
+                "{} is not a package or subspace",
+                self.inner().description()
+            )),
         }
     }
 }
@@ -172,7 +252,7 @@ pub struct Progmem {
 pub struct Function {
     parameters: Vec<Spanned<Parameter>>,
     return_type: Spanned<Type>,
-    body: Spanned<Statement>
+    body: Spanned<Statement>,
 }
 
 #[derive(Debug, Clone)]

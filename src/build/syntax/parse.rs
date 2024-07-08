@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     ops::{Deref, Range},
     sync::Arc,
 };
@@ -6,14 +7,25 @@ use std::{
 use async_std::{fs::File, path::PathBuf};
 
 use crate::{
-    build::{lib::locator::locate_library, symbol_table::SymbolTable, syntax::{info::CompInfo, lex::Keyword}}, debug, diagnostic::{Diagnostic, Reporter}, info, seek, span::{Lookup, Span, Spanned}, spanned_error, spanned_info
+    build::{
+        lib::locator::locate_library,
+        symbol_table::SymbolTable,
+        syntax::{info::CompInfo, lex::Keyword},
+    },
+    debug,
+    diagnostic::{Diagnostic, Reporter},
+    info, seek,
+    span::{Lookup, Span, Spanned},
+    spanned_error, spanned_info,
 };
 
 use super::{
     ast::{Const, Function, Path, Progmem, Static},
     info::{Lib, LibSrc},
     lex::{lex, Delimeter, Punctuation, Token},
-    token::{CloseBrace, CloseBracket, CloseParen, Gt, Ident, Lt, OpenBrace, OpenBracket, OpenParen},
+    token::{
+        CloseBrace, CloseBracket, CloseParen, Gt, Ident, Lt, OpenBrace, OpenBracket, OpenParen,
+    },
 };
 
 pub async fn parse(
@@ -25,7 +37,9 @@ pub async fn parse(
     subdir: PathBuf,
 ) -> Result<Namespace, Reporter> {
     let mut cursor = Cursor::new(stream, source_name, lookup, symbol_table, reporter);
-    Namespace::parse(&mut cursor, subdir).await.map_err(|_| cursor.take_reporter())
+    Namespace::parse(&mut cursor, subdir)
+        .await
+        .map_err(|_| cursor.take_reporter())
 }
 
 #[derive(Debug, Clone)]
@@ -57,24 +71,22 @@ impl Namespace {
     async fn parse<'a>(cursor: &mut Cursor<'a>, subdir: PathBuf) -> Result<Namespace, ()> {
         let mut namespace = Namespace::new(subdir.clone());
         let mut visibility = Visibility::Private;
-    
+
         while let Some(tok) = cursor.peek() {
             match tok.inner() {
-                Token::Keyword(Keyword::Fn) => {
-                    match cursor.parse() {
-                        Ok(func) => {
-                            namespace.functions.push((func, visibility));
-                            visibility = Visibility::Private;
-                        },
-                        Err(err) => {
-                            cursor.reporter().report(err).await;
-                            continue;
-                        }
+                Token::Keyword(Keyword::Fn) => match cursor.parse() {
+                    Ok(func) => {
+                        namespace.functions.push((func, visibility));
+                        visibility = Visibility::Private;
                     }
-                }
+                    Err(err) => {
+                        cursor.reporter().report(err).await;
+                        continue;
+                    }
+                },
                 Token::Keyword(Keyword::Import) => {
                     cursor.step();
-    
+
                     match cursor.parse() {
                         Ok(path) => namespace.imports.push((path, visibility)),
                         Err(err) => {
@@ -82,7 +94,7 @@ impl Namespace {
                             cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
                         }
                     }
-    
+
                     cursor.expect_semicolon();
                     visibility = Visibility::Private;
                 }
@@ -94,7 +106,7 @@ impl Namespace {
                             cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
                         }
                     }
-    
+
                     cursor.expect_semicolon();
                     visibility = Visibility::Private;
                 }
@@ -106,7 +118,7 @@ impl Namespace {
                             cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
                         }
                     }
-    
+
                     cursor.expect_semicolon();
                     visibility = Visibility::Private;
                 }
@@ -118,24 +130,40 @@ impl Namespace {
                             cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
                         }
                     }
-    
+
                     cursor.expect_semicolon();
                     visibility = Visibility::Private;
                 }
                 Token::Keyword(Keyword::Prot) => {
                     match visibility {
-                        Visibility::Public | Visibility::Protected => cursor.reporter().report(spanned_error!(tok.span().clone(), "duplicate visibility modifier")).await,
+                        Visibility::Public | Visibility::Protected => {
+                            cursor
+                                .reporter()
+                                .report(spanned_error!(
+                                    tok.span().clone(),
+                                    "duplicate visibility modifier"
+                                ))
+                                .await
+                        }
                         Visibility::Private => visibility = Visibility::Protected,
                     }
-    
+
                     cursor.step();
                 }
                 Token::Keyword(Keyword::Pub) => {
                     match visibility {
-                        Visibility::Public | Visibility::Protected => cursor.reporter().report(spanned_error!(tok.span().clone(), "duplicate visibility modifier")).await,
+                        Visibility::Public | Visibility::Protected => {
+                            cursor
+                                .reporter()
+                                .report(spanned_error!(
+                                    tok.span().clone(),
+                                    "duplicate visibility modifier"
+                                ))
+                                .await
+                        }
                         Visibility::Private => visibility = Visibility::Public,
                     }
-    
+
                     cursor.step();
                 }
                 Token::Keyword(Keyword::Subspace) => {
@@ -144,12 +172,16 @@ impl Namespace {
                         Ok(ident) => ident,
                         Err(err) => {
                             cursor.reporter().report(err).await;
-                            seek!(cursor, Token::Punctuation(Punctuation::Semicolon) | Token::Delimeter(Delimeter::CloseBrace));
+                            seek!(
+                                cursor,
+                                Token::Punctuation(Punctuation::Semicolon)
+                                    | Token::Delimeter(Delimeter::CloseBrace)
+                            );
                             cursor.step();
                             continue;
                         }
                     };
-    
+
                     match cursor.peek().map(Spanned::inner) {
                         Some(Token::Delimeter(Delimeter::OpenBrace)) => {
                             let mut depth = 0;
@@ -158,18 +190,30 @@ impl Namespace {
                             while let Some(tok) = cursor.peek() {
                                 match tok.inner() {
                                     Token::Delimeter(Delimeter::OpenBrace) => depth += 1,
-                                    Token::Delimeter(Delimeter::CloseBrace) => if depth == 1 {
-                                        let space_subdir = subdir.join(cursor.symbol_table.get(ident.inner().symbol).await);
-                                        let mut space_cursor = cursor.slice(start..cursor.position);
+                                    Token::Delimeter(Delimeter::CloseBrace) => {
+                                        if depth == 1 {
+                                            let space_subdir = subdir.join(
+                                                cursor.symbol_table.get(ident.inner().symbol).await,
+                                            );
+                                            let mut space_cursor =
+                                                cursor.slice(start..cursor.position);
 
-                                        if let Ok(subspace) = Box::pin(Namespace::parse(&mut space_cursor, space_subdir)).await {
-                                            namespace.subspaces.push((ident, subspace, visibility));
+                                            if let Ok(subspace) = Box::pin(Namespace::parse(
+                                                &mut space_cursor,
+                                                space_subdir,
+                                            ))
+                                            .await
+                                            {
+                                                namespace
+                                                    .subspaces
+                                                    .push((ident, subspace, visibility));
+                                            }
+                                            visibility = Visibility::Private;
+                                            cursor.step();
+                                            break;
+                                        } else {
+                                            depth -= 1;
                                         }
-                                        visibility = Visibility::Private;
-                                        cursor.step();
-                                        break;
-                                    } else {
-                                        depth -= 1;
                                     }
                                     _ => {}
                                 }
@@ -179,28 +223,47 @@ impl Namespace {
                         }
                         _ => {
                             cursor.expect_semicolon();
-                            
-                            let subspace_path = subdir.join(cursor.symbol_table.get(ident.inner().symbol).await).with_extension("warp");
+
+                            let subspace_path = subdir
+                                .join(cursor.symbol_table.get(ident.inner().symbol).await)
+                                .with_extension("warp");
                             let file_name = subspace_path.to_string_lossy().replace("\\", "/");
                             let subspace_file = match File::open(&subspace_path).await {
                                 Ok(file) => file,
                                 Err(err) => {
-                                    cursor.reporter().report(spanned_error!(ident.into_span(), "unable to open file `{file_name}`: {err}")).await;
+                                    cursor
+                                        .reporter()
+                                        .report(spanned_error!(
+                                            ident.into_span(),
+                                            "unable to open file `{file_name}`: {err}"
+                                        ))
+                                        .await;
                                     continue;
                                 }
                             };
 
-                            let lexed = match lex(cursor.symbol_table.clone(), file_name, subspace_file).await {
-                                Ok(lexed) => lexed,
-                                Err(errors) => {
-                                    cursor.reporter().report_all(errors).await;
-                                    continue;
-                                }
-                            };
-                            
+                            let lexed =
+                                match lex(cursor.symbol_table.clone(), file_name, subspace_file)
+                                    .await
+                                {
+                                    Ok(lexed) => lexed,
+                                    Err(errors) => {
+                                        cursor.reporter().report_all(errors).await;
+                                        continue;
+                                    }
+                                };
+
                             let subspace_dir = subspace_path.with_extension("");
-                            let mut cursor = Cursor::new(&lexed.stream, lexed.source, lexed.lookup, &lexed.symbol_table, cursor.reporter().clone());
-                            if let Ok(subspace) = Box::pin(Namespace::parse(&mut cursor, subspace_dir)).await {
+                            let mut cursor = Cursor::new(
+                                &lexed.stream,
+                                lexed.source,
+                                lexed.lookup,
+                                &lexed.symbol_table,
+                                cursor.reporter().clone(),
+                            );
+                            if let Ok(subspace) =
+                                Box::pin(Namespace::parse(&mut cursor, subspace_dir)).await
+                            {
                                 namespace.subspaces.push((ident, subspace, visibility));
                             }
                             visibility = Visibility::Private;
@@ -209,18 +272,38 @@ impl Namespace {
                 }
                 Token::CompInfo(info) => {
                     if matches!(visibility, Visibility::Public | Visibility::Protected) {
-                        cursor.reporter().report(spanned_error!(tok.span().clone(), "compiler info cannot contain visibility modifiers")).await;
+                        cursor
+                            .reporter()
+                            .report(spanned_error!(
+                                tok.span().clone(),
+                                "compiler info cannot contain visibility modifiers"
+                            ))
+                            .await;
                         cursor.step();
                         continue;
                     }
 
-                    match CompInfo::parse(Spanned::new(info.clone(), tok.span().clone()), cursor.reporter()) {
+                    match CompInfo::parse(
+                        Spanned::new(info.clone(), tok.span().clone()),
+                        cursor.reporter(),
+                    ) {
                         CompInfo::Lib(lib) => {
                             match locate_library(lib.src, cursor.reporter()).await {
-                                Ok(path) => namespace.lib_imports.push((Spanned::new(Ident { symbol: cursor.symbol_table.find_or_insert(&lib.ident).await }, lib.ident.span().clone()), path)),
-                                Err(err) => {},
+                                Ok(path) => namespace.lib_imports.push((
+                                    Spanned::new(
+                                        Ident {
+                                            symbol: cursor
+                                                .symbol_table
+                                                .find_or_insert(&lib.ident)
+                                                .await,
+                                        },
+                                        lib.ident.span().clone(),
+                                    ),
+                                    path,
+                                )),
+                                Err(err) => {}
                             }
-                        },
+                        }
                         CompInfo::Err => {}
                     }
                     cursor.step()
@@ -255,6 +338,20 @@ pub enum Visibility {
     Private,
     Protected,
     Public,
+}
+
+impl Display for Visibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Visibility::Private => "private",
+                Visibility::Protected => "protected",
+                Visibility::Public => "public",
+            }
+        )
+    }
 }
 
 pub struct Cursor<'a> {
@@ -471,12 +568,16 @@ impl<T: 'static, S: 'static> Punctuated<T, S> {
             self.inner
                 .into_iter()
                 .map(|pair| pair.0)
-                .chain(self.last.into_iter())
+                .chain(self.last.into_iter()),
         )
     }
 
     pub fn to_vec(self) -> Vec<T> {
-        self.inner.into_iter().map(|item| item.0).chain(self.last.into_iter()).collect()
+        self.inner
+            .into_iter()
+            .map(|item| item.0)
+            .chain(self.last.into_iter())
+            .collect()
     }
 }
 

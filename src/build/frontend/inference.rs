@@ -13,14 +13,10 @@ pub fn resolve() -> Result<Namespace, Diagnostic> {
     todo!()
 }
 
-pub struct Namespace {
-    
-}
+pub struct Namespace {}
 
 #[derive(Debug, Clone)]
-pub struct Database {
-
-}
+pub struct Database {}
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -41,7 +37,7 @@ pub enum Type {
         ty: Box<Spanned<Type>>,
     },
     Tuple(Vec<Spanned<Type>>),
-    Array (Box<Spanned<Type>>),
+    Array(Box<Spanned<Type>>),
     Fn {
         parameters: Vec<Spanned<Type>>,
         return_type: Box<Spanned<Type>>,

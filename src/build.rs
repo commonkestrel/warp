@@ -3,13 +3,18 @@ use std::{env, path::PathBuf, process::ExitCode};
 use async_std::{fs::File, io::WriteExt};
 use clio::{Input, Output};
 use symbol_table::SymbolTable;
-use syntax::{ast::Function, info::CompInfo, lex::Token, parse::{parse, Cursor}};
+use syntax::{
+    ast::Function,
+    info::CompInfo,
+    lex::Token,
+    parse::{parse, Cursor},
+};
 
 use crate::{diagnostic::Reporter, error, span::Spanned};
 
 mod frontend {
-    pub mod uncaught_error;
     pub mod inference;
+    pub mod uncaught_error;
 }
 
 mod syntax {
@@ -55,7 +60,9 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
                 match env::current_dir() {
                     Ok(cwd) => cwd,
                     Err(err) => {
-                        error!("unable to get the current working directory: {err}").emit().await;
+                        error!("unable to get the current working directory: {err}")
+                            .emit()
+                            .await;
                         return ExitCode::FAILURE;
                     }
                 }
@@ -66,13 +73,24 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
         None => match env::current_dir() {
             Ok(cwd) => cwd,
             Err(err) => {
-                error!("unable to get the current working directory: {err}").emit().await;
+                error!("unable to get the current working directory: {err}")
+                    .emit()
+                    .await;
                 return ExitCode::FAILURE;
             }
-        }
+        },
     };
 
-    let namespace = match parse(&lexed.stream, lexed.source, lexed.lookup, Reporter::new(), &lexed.symbol_table, root_dir.into()).await {
+    let namespace = match parse(
+        &lexed.stream,
+        lexed.source,
+        lexed.lookup,
+        Reporter::new(),
+        &lexed.symbol_table,
+        root_dir.into(),
+    )
+    .await
+    {
         Ok(namespace) => namespace,
         Err(reporter) => {
             reporter.emit_all().await;

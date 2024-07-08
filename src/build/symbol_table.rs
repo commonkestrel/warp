@@ -31,10 +31,7 @@ impl SymbolTable {
     pub async fn find(&self, symbol: &str) -> Option<SymbolRef> {
         let symbols = self.symbols.read().await;
 
-        symbols
-            .iter()
-            .position(|s| s == symbol)
-            .map(SymbolRef::new)
+        symbols.iter().position(|s| s == symbol).map(SymbolRef::new)
     }
 
     pub async fn get(&self, id: SymbolRef) -> String {
