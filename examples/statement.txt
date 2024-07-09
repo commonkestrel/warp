@@ -14,6 +14,18 @@ UnresolvedDb {
         },
         Ident {
             symbol: SymbolRef(
+                15,
+            ),
+        }: Visible {
+            ident_span: Span {
+                source: "examples/statement.warp",
+                location: 445..448,
+            },
+            visibility: Private,
+            inner: Subspace(UnresolvedDb { items: {}, imports: {Ident(Ident { symbol: SymbolRef(2) }): (Span { source: "examples/lib.warp", location: 119..122 }, Path { start: Ident(Ident { symbol: SymbolRef(0) }), segments: [Ident { symbol: SymbolRef(1) }, Ident { symbol: SymbolRef(2) }] })}, libs: {Ident { symbol: SymbolRef(0) }: PathBuf { inner: "\\\\?\\C:\\Users\\Jett\\.warp\\git\\github.com\\commonkestrel\\warp-std" }} }),
+        },
+        Ident {
+            symbol: SymbolRef(
                 3,
             ),
         }: Visible {
@@ -23,6 +35,18 @@ UnresolvedDb {
             },
             visibility: Private,
             inner: Const(Immediate(42)),
+        },
+        Ident {
+            symbol: SymbolRef(
+                13,
+            ),
+        }: Visible {
+            ident_span: Span {
+                source: "examples/statement.warp",
+                location: 381..386,
+            },
+            visibility: Private,
+            inner: Subspace(UnresolvedDb { items: {Ident { symbol: SymbolRef(14) }: Visible { ident_span: Span { source: "examples/statement.warp", location: 406..409 }, visibility: Protected, inner: Progmem(Progmem { ty: Array(I8), value: Array(Punctuated { inner: [(Immediate(0), Comma), (Immediate(1), Comma), (Immediate(0), Comma)], last: Some(Immediate(-1)) }) }) }}, imports: {}, libs: {} }),
         },
         Ident {
             symbol: SymbolRef(

@@ -13,6 +13,10 @@ pub struct Typed<T: Clone> {
     ty: MaybeType,
 }
 
+pub struct Database {
+    
+}
+
 #[derive(Debug, Clone)]
 pub enum MaybeType {
     Explicit(Spanned<Type>),

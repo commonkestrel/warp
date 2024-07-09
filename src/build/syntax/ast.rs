@@ -1043,6 +1043,10 @@ pub struct Path {
 }
 
 impl Path {
+    pub fn start(&self) -> &Spanned<PathSegment> {
+        &self.start
+    }
+
     pub fn end(&self) -> Spanned<PathSegment> {
         match self.segments.last() {
             Some(last) => {
@@ -1052,6 +1056,10 @@ impl Path {
             }
             None => self.start.clone()
         }
+    }
+
+    pub fn end_segment(&self) -> Option<Spanned<Ident>> {
+        self.segments.last().cloned()
     }
 }
 

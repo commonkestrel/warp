@@ -4,6 +4,7 @@ use async_std::{
     fs::File,
     path::{Path, PathBuf},
 };
+use slotmap::SlotMap;
 
 use crate::{
     build::{symbol_table::SymbolTable, syntax},
@@ -65,5 +66,6 @@ pub async fn resolve_lib(
         }
     };
 
-    Box::pin(UnresolvedDb::compile(namespace, lexed.symbol_table, libs, reporter)).await
+    let mut items = SlotMap::with_key();
+    Box::pin(UnresolvedDb::compile(namespace, lexed.symbol_table, libs, &mut items, reporter)).await
 }

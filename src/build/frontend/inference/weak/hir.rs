@@ -21,10 +21,12 @@ use crate::{
 
 use super::lib::resolve_lib;
 
+new_key_type! {pub struct ItemId;}
+
 #[derive(Debug, Clone)]
 pub struct UnresolvedDb {
-    items: HashMap<Ident, Visible<Arc<Spanned<Item>>>>,
-    imports: HashMap<PathSegment, (Span, Spanned<Path>)>,
+    items: HashMap<Ident, Visible<ItemId>>,
+    imports: HashMap<Ident, (Span, Spanned<Path>)>,
     libs: HashMap<Ident, Spanned<PathBuf>>,
 }
 
@@ -33,11 +35,10 @@ impl UnresolvedDb {
         src: Namespace,
         symbol_table: SymbolTable,
         libraries: &mut HashMap<PathBuf, UnresolvedDb>,
+        items: &mut SlotMap<ItemId, Item>,
         reporter: Reporter,
     ) -> UnresolvedDb {
-        let mut items = HashMap::new();
-        let mut imports = HashMap::new();
-        let mut libs = HashMap::new();
+        let mut db = UnresolvedDb::default();
 
         for (ident, path) in src.lib_imports {
             let lib_path = match path.canonicalize().await {
@@ -66,7 +67,7 @@ impl UnresolvedDb {
             }
 
             let (identifier, span) = ident.deconstruct();
-            libs.insert(identifier, Spanned::new(lib_path, span));
+            db.libs.insert(identifier, Spanned::new(lib_path, span));
         }
 
         for (spanned, vis) in src.functions {
@@ -101,32 +102,34 @@ impl UnresolvedDb {
                 parameters.push(Spanned::new(parameter, span));
             }
 
-            let function = Arc::new(Spanned::new(
-                Item::Fn(Function {
-                    parameters,
-                    return_type,
-                    body: func.body,
-                }),
-                span,
-            ));
+            let function = Item::Fn(Function {
+                parameters,
+                return_type,
+                body: func.body,
+            });
 
-            items.insert(ident, Visible::new(ident_span, vis, function));
+            let id = items.insert(function);
+            db.items.insert(ident, Visible::new(ident_span, vis, id));
         }
 
         for path in src.imports {
-            let (ident, ident_span) = path.end().clone().deconstruct();
+            let (ident, ident_span) = match path.end_segment() {
+                Some(seg) => seg.deconstruct(),
+                None => continue,
+            };
 
             let import = path;
 
-            imports.insert(ident, (ident_span, import));
+            db.imports.insert(ident, (ident_span, import));
         }
 
         for (spanned, vis) in src.constants {
             let (constant, const_span) = spanned.deconstruct();
             let (ident, ident_span) = constant.ident.deconstruct();
 
-            let expr = Arc::new(Spanned::new(Item::Const(constant.value), const_span));
-            if let Some(_) = items.insert(ident, Visible::new(ident_span.clone(), vis, expr)) {
+            let expr = Item::Const(constant.value);
+            let id = items.insert(expr);
+            if let Some(_) = db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)) {
                 reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
             }
         }
@@ -142,8 +145,9 @@ impl UnresolvedDb {
                 }
             };
 
-            let expr = Arc::new(Spanned::new(Item::Static(Static {ty, value: stat.value}), const_span));
-            if let Some(_) = items.insert(ident, Visible::new(ident_span.clone(), vis, expr)) {
+            let item = Item::Static(Static {ty, value: stat.value});
+            let id = items.insert(item);
+            if let Some(_) = db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)) {
                 reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
             }
         }
@@ -159,8 +163,9 @@ impl UnresolvedDb {
                 }
             };
 
-            let expr = Arc::new(Spanned::new(Item::Progmem(Progmem {ty, value: progmem.value}), const_span));
-            if let Some(_) = items.insert(ident, Visible::new(ident_span.clone(), vis, expr)) {
+            let item = Item::Progmem(Progmem {ty, value: progmem.value});
+            let id = items.insert(item);
+            if let Some(_) = db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)) {
                 reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
             }
         }
@@ -169,17 +174,35 @@ impl UnresolvedDb {
             let (ident, ident_span) = id.deconstruct();
             let (space, space_span) = subspace.deconstruct();
 
-            let db = Box::pin(UnresolvedDb::compile(space, symbol_table.clone(), libraries, reporter.clone())).await;
-            let item = Arc::new(Spanned::new(Item::Subspace(db), space_span));
-            if let Some(_) = items.insert(ident, Visible::new(ident_span.clone(), vis, item)) {
+            let subspace_db = Box::pin(UnresolvedDb::compile(space, symbol_table.clone(), libraries, items, reporter.clone())).await;
+            let item = Item::Subspace(subspace_db);
+            let id = items.insert(item);
+            if let Some(_) = db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)) {
                 reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
             }
         }
 
-        UnresolvedDb { items, imports, libs }
+        db
     }
 
-    pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<Arc<Spanned<Item>>>, Diagnostic> {
+    pub async fn resolve_path(path: Spanned<Path>, root: ItemId, superspace: Option<ItemId>, reporter: &Reporter) -> Option<ItemId> {
+        let (start, start_span) = path.start().clone().deconstruct();
+        let mut item = match start {
+            PathSegment::Root => Some(root),
+            PathSegment::Super => match superspace {
+                Some(sup) => Some(sup),
+                None => {
+                    reporter.report(spanned_error!(start_span, "no superspace found for current space")).await;
+                    None
+                }
+            },
+            PathSegment::Ident(id) => todo!()
+        };
+
+        todo!();
+    }
+
+    pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<ItemId>, Diagnostic> {
         match self.items.get(index.inner()) {
             Some(item) => Ok(item.clone()),
             None => Err(spanned_error!(
@@ -227,7 +250,7 @@ impl Visible<Spanned<Item>> {
         parent: Spanned<Ident>,
         idx: &Spanned<Ident>,
         reachable: Visibility,
-    ) -> Result<Arc<Spanned<Item>>, Diagnostic> {
+    ) -> Result<ItemId, Diagnostic> {
         match self.inner().inner() {
             Item::Subspace(db) => match db.get(idx) {
                 Ok(item) => {
