@@ -1,7 +1,12 @@
+use std::collections::HashMap;
+
+use async_std::path::PathBuf;
+use slotmap::SlotMap;
+
 use crate::{
     build::{
         ascii::AsciiStr,
-        frontend::hir::Type,
+        frontend::hir::{weak::unresolved::{self, Item, ItemId, UnresolvedDb}, Type},
         syntax::ast::{BinaryOp, Path, UnaryOp},
     },
     span::Spanned,
@@ -14,7 +19,13 @@ pub struct Typed<T: Clone> {
 }
 
 pub struct Database {
-    
+    items: SlotMap<ItemId, Item>
+}
+
+impl Database {
+    pub fn resolve_package(unresolved: UnresolvedDb, libs: HashMap<PathBuf, UnresolvedDb>, items: SlotMap<ItemId, unresolved::Item>) -> Option<Database> {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -18,7 +18,7 @@ use super::unresolved::{Item, ItemId, UnresolvedDb};
 pub async fn resolve_lib(
     root_path: PathBuf,
     span: &Span,
-    libs: &mut HashMap<PathBuf, UnresolvedDb>,
+    libs: &mut HashMap<PathBuf, ItemId>,
     items: &mut SlotMap<ItemId, Item>,
     symbol_table: SymbolTable,
     reporter: &Reporter,

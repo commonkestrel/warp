@@ -34,7 +34,7 @@ impl UnresolvedDb {
     pub async fn compile(
         src: Namespace,
         symbol_table: SymbolTable,
-        libraries: &mut HashMap<PathBuf, UnresolvedDb>,
+        libraries: &mut HashMap<PathBuf, ItemId>,
         items: &mut SlotMap<ItemId, Item>,
         reporter: Reporter,
     ) -> UnresolvedDb {
@@ -64,8 +64,11 @@ impl UnresolvedDb {
                     &reporter,
                 )
                 .await;
-                libraries.insert(lib_path.clone(), lib);
+
+                let id = items.insert(Item::Library(lib));
+                libraries.insert(lib_path.clone(), id);
             }
+
 
             let (identifier, span) = ident.deconstruct();
             db.libs.insert(identifier, Spanned::new(lib_path, span));
@@ -217,7 +220,7 @@ impl UnresolvedDb {
                 }
             };
 
-            match todo!() {
+            match base.get(&base_span, segment, if same_package {Visibility::Protected} else {Visibility::Public}) {
                 Ok(it) => item = it,
                 Err(err) => {
                     reporter.report(err).await;
@@ -260,7 +263,6 @@ pub enum Item {
     Const(Spanned<Expr>),
     Static(Static),
     Progmem(Progmem),
-    Import(ItemId),
     Subspace(UnresolvedDb),
     Library(UnresolvedDb),
 }
@@ -271,7 +273,6 @@ impl Item {
             Item::Fn(_) => "function",
             Item::Const(_) => "constant",
             Item::Static(_) => "static",
-            Item::Import(_) => "import",
             Item::Progmem(_) => "program memory",
             Item::Subspace(_) => "subspace",
             Item::Library(_) => "library",
@@ -280,7 +281,7 @@ impl Item {
 
     pub fn get(
         &self,
-        parent: &Spanned<Ident>,
+        parent: &Span,
         idx: &Spanned<Ident>,
         reachable: Visibility,
     ) -> Result<ItemId, Diagnostic> {
@@ -311,16 +312,12 @@ impl Item {
                 Err(err) => Err(err),
             },
             _ => Err(spanned_error!(
-                parent.span().clone(),
+                parent.clone(),
                 "{} is not a package or subspace",
                 self.description()
             )),
         }
     }
-}
-
-impl Visible<Spanned<Item>> {
-    
 }
 
 #[derive(Debug, Clone)]
