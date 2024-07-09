@@ -66,5 +66,12 @@ pub async fn resolve_lib(
         }
     };
 
-    Box::pin(UnresolvedDb::compile(namespace, lexed.symbol_table, libs, items, reporter)).await
+    Box::pin(UnresolvedDb::compile(
+        namespace,
+        lexed.symbol_table,
+        libs,
+        items,
+        reporter,
+    ))
+    .await
 }

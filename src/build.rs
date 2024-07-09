@@ -103,7 +103,14 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
 
     let mut libs = HashMap::new();
     let mut items = SlotMap::with_key();
-    let db = UnresolvedDb::compile(namespace, lexed.symbol_table, &mut libs, &mut items, reporter.clone()).await;
+    let db = UnresolvedDb::compile(
+        namespace,
+        lexed.symbol_table,
+        &mut libs,
+        &mut items,
+        reporter.clone(),
+    )
+    .await;
 
     match File::create(output).await {
         Ok(mut file) => match write!(file, "{:#?}", db).await {

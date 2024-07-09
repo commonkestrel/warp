@@ -86,10 +86,13 @@ impl Namespace {
                 },
                 Token::Keyword(Keyword::Import) => {
                     if visibility != Visibility::Private {
-                        cursor.reporter().report(spanned_error!(tok.span().clone(), "imports cannot ")).await;
+                        cursor
+                            .reporter()
+                            .report(spanned_error!(tok.span().clone(), "imports cannot "))
+                            .await;
                     }
                     cursor.step();
-                    
+
                     match cursor.parse() {
                         Ok(path) => namespace.imports.push(path),
                         Err(err) => {
@@ -186,7 +189,10 @@ impl Namespace {
                     };
 
                     match cursor.peek() {
-                        Some(Spanned {inner: Token::Delimeter(Delimeter::OpenBrace), span}) => {
+                        Some(Spanned {
+                            inner: Token::Delimeter(Delimeter::OpenBrace),
+                            span,
+                        }) => {
                             let start_span = span.clone();
                             let mut depth = 0;
                             let start = cursor.position + 1;
@@ -210,9 +216,11 @@ impl Namespace {
                                             ))
                                             .await
                                             {
-                                                namespace
-                                                    .subspaces
-                                                    .push((ident, Spanned::new(subspace, space_span), visibility));
+                                                namespace.subspaces.push((
+                                                    ident,
+                                                    Spanned::new(subspace, space_span),
+                                                    visibility,
+                                                ));
                                             }
                                             visibility = Visibility::Private;
                                             cursor.step();
@@ -274,7 +282,11 @@ impl Namespace {
                                 let end = eof.end();
                                 let span = eof.with_location(0..end);
 
-                                namespace.subspaces.push((ident, Spanned::new(subspace, span), visibility));
+                                namespace.subspaces.push((
+                                    ident,
+                                    Spanned::new(subspace, span),
+                                    visibility,
+                                ));
                             }
                             visibility = Visibility::Private;
                         }

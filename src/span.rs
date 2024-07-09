@@ -104,7 +104,10 @@ pub struct Span {
 
 impl Debug for Span {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Span").field("source", &self.source_name).field("location", &self.location).finish()
+        f.debug_struct("Span")
+            .field("source", &self.source_name)
+            .field("location", &self.location)
+            .finish()
     }
 }
 

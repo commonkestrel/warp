@@ -6,7 +6,10 @@ use slotmap::{new_key_type, SlotMap};
 use crate::{
     build::{
         ascii::AsciiStr,
-        frontend::{hir::{Type, Visible}, uncaught_error::UncaughtUnwrap},
+        frontend::{
+            hir::{Type, Visible},
+            uncaught_error::UncaughtUnwrap,
+        },
         symbol_table::SymbolTable,
         syntax::{
             ast::{BinaryOp, Expr, Mutability, Path, PathSegment, Statement, UnaryOp},
@@ -25,9 +28,9 @@ new_key_type! {pub struct ItemId;}
 
 #[derive(Debug, Clone)]
 pub struct UnresolvedDb {
-    items: HashMap<Ident, Visible<ItemId>>,
-    imports: HashMap<Ident, (Span, Spanned<Path>)>,
-    libs: HashMap<Ident, Spanned<PathBuf>>,
+    pub items: HashMap<Ident, Visible<ItemId>>,
+    pub imports: HashMap<Ident, (Span, Spanned<Path>)>,
+    pub libs: HashMap<Ident, Spanned<PathBuf>>,
 }
 
 impl UnresolvedDb {
@@ -68,7 +71,6 @@ impl UnresolvedDb {
                 let id = items.insert(Item::Library(lib));
                 libraries.insert(lib_path.clone(), id);
             }
-
 
             let (identifier, span) = ident.deconstruct();
             db.libs.insert(identifier, Spanned::new(lib_path, span));
@@ -113,8 +115,14 @@ impl UnresolvedDb {
             });
 
             let id = items.insert(function);
-            if db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)).is_some() {
-                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            if db
+                .items
+                .insert(ident, Visible::new(ident_span.clone(), vis, id))
+                .is_some()
+            {
+                reporter
+                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .await;
             }
         }
 
@@ -135,8 +143,13 @@ impl UnresolvedDb {
 
             let expr = Item::Const(constant.value);
             let id = items.insert(expr);
-            if let Some(_) = db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)) {
-                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            if let Some(_) = db
+                .items
+                .insert(ident, Visible::new(ident_span.clone(), vis, id))
+            {
+                reporter
+                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .await;
             }
         }
 
@@ -151,10 +164,18 @@ impl UnresolvedDb {
                 }
             };
 
-            let item = Item::Static(Static {ty, value: stat.value});
+            let item = Item::Static(Static {
+                ty,
+                value: stat.value,
+            });
             let id = items.insert(item);
-            if let Some(_) = db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)) {
-                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            if let Some(_) = db
+                .items
+                .insert(ident, Visible::new(ident_span.clone(), vis, id))
+            {
+                reporter
+                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .await;
             }
         }
 
@@ -169,10 +190,18 @@ impl UnresolvedDb {
                 }
             };
 
-            let item = Item::Progmem(Progmem {ty, value: progmem.value});
+            let item = Item::Progmem(Progmem {
+                ty,
+                value: progmem.value,
+            });
             let id = items.insert(item);
-            if let Some(_) = db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)) {
-                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            if let Some(_) = db
+                .items
+                .insert(ident, Visible::new(ident_span.clone(), vis, id))
+            {
+                reporter
+                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .await;
             }
         }
 
@@ -180,33 +209,60 @@ impl UnresolvedDb {
             let (ident, ident_span) = id.deconstruct();
             let (space, space_span) = subspace.deconstruct();
 
-            let subspace_db = Box::pin(UnresolvedDb::compile(space, symbol_table.clone(), libraries, items, reporter.clone())).await;
+            let subspace_db = Box::pin(UnresolvedDb::compile(
+                space,
+                symbol_table.clone(),
+                libraries,
+                items,
+                reporter.clone(),
+            ))
+            .await;
             let item = Item::Subspace(subspace_db);
             let id = items.insert(item);
-            if let Some(_) = db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)) {
-                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            if let Some(_) = db
+                .items
+                .insert(ident, Visible::new(ident_span.clone(), vis, id))
+            {
+                reporter
+                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .await;
             }
         }
 
         db
     }
 
-    pub async fn resolve_path(&self, path: Path, root: ItemId, superspace: Option<ItemId>, items: &SlotMap<ItemId, Item>, reporter: &Reporter) -> Option<ItemId> {
+    pub async fn resolve_path(
+        &self,
+        path: Path,
+        root: ItemId,
+        superspace: Option<ItemId>,
+        items: &SlotMap<ItemId, Item>,
+        libs: &HashMap<PathBuf, ItemId>,
+        reporter: &Reporter,
+    ) -> Option<ItemId> {
         let (start, mut base_span) = path.start().clone().deconstruct();
         let (mut item, same_package) = match start {
             PathSegment::Root => (root, true),
             PathSegment::Super => match superspace {
                 Some(sup) => (sup, true),
                 None => {
-                    reporter.report(spanned_error!(base_span, "already at project root; no superspace available")).await;
+                    reporter
+                        .report(spanned_error!(
+                            base_span,
+                            "already at project root; no superspace available"
+                        ))
+                        .await;
                     return None;
                 }
             },
-            PathSegment::Ident(id) => match self.get_local(&Spanned::new(id, base_span.clone())) {
-                Ok(item) => (item.0.into_inner(), item.1),
-                Err(err) => {
-                    reporter.report(err).await;
-                    return None;
+            PathSegment::Ident(id) => {
+                match self.get_local(&Spanned::new(id, base_span.clone()), libs) {
+                    Ok(item) => (item.0.into_inner(), item.1),
+                    Err(err) => {
+                        reporter.report(err).await;
+                        return None;
+                    }
                 }
             }
         };
@@ -215,13 +271,28 @@ impl UnresolvedDb {
             let base = match items.get(item) {
                 Some(base) => base,
                 None => {
-                    reporter.report(spanned_error!(base_span, "no item found for referenced base").as_bug()).await;
+                    reporter
+                        .report(
+                            spanned_error!(base_span, "no item found for referenced base").as_bug(),
+                        )
+                        .await;
                     return None;
                 }
             };
 
-            match base.get(&base_span, segment, if same_package {Visibility::Protected} else {Visibility::Public}) {
-                Ok(it) => item = it,
+            match base.get(
+                &base_span,
+                segment,
+                if same_package {
+                    Visibility::Protected
+                } else {
+                    Visibility::Public
+                },
+            ) {
+                Ok(it) => {
+                    item = it;
+                    base_span = segment.span().clone();
+                }
                 Err(err) => {
                     reporter.report(err).await;
                     return None;
@@ -232,8 +303,34 @@ impl UnresolvedDb {
         Some(item)
     }
 
-    pub fn get_local(&self, index: &Spanned<Ident>) -> Result<(Spanned<ItemId>, bool), Diagnostic> {
-        todo!()
+    pub fn get_local(
+        &self,
+        index: &Spanned<Ident>,
+        libs: &HashMap<PathBuf, ItemId>,
+    ) -> Result<(Spanned<ItemId>, bool), Diagnostic> {
+        if let Some(item) = self.items.get(index.inner()) {
+            return Ok((Spanned::new(*item.inner(), item.ident_span().clone()), true));
+        }
+
+        match self.libs.get(index.inner()) {
+            Some(item) => {
+                let lib = match libs.get(item.inner()) {
+                    Some(lib) => lib,
+                    None => {
+                        return Err(spanned_error!(
+                            index.span().clone(),
+                            "library is not present in item map"
+                        )
+                        .as_bug())
+                    }
+                };
+                Ok((Spanned::new(*lib, item.span().clone()), false))
+            }
+            None => Err(spanned_error!(
+                index.span().clone(),
+                "item does not exist in subspace or package"
+            )),
+        }
     }
 
     pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<ItemId>, Diagnostic> {
@@ -241,7 +338,7 @@ impl UnresolvedDb {
             Some(item) => Ok(item.clone()),
             None => Err(spanned_error!(
                 index.span().clone(),
-                "item does not exist in submodule or library"
+                "item does not exist in subspace or package"
             )),
         }
     }

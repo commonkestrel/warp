@@ -1,8 +1,12 @@
-use crate::{build::syntax::{ast::Mutability, parse::Visibility}, diagnostic::Diagnostic, span::{Span, Spanned}};
+use crate::{
+    build::syntax::{ast::Mutability, parse::Visibility},
+    diagnostic::Diagnostic,
+    span::{Span, Spanned},
+};
 
 pub mod weak {
-    pub mod unresolved;
     pub mod lib;
+    pub mod unresolved;
 }
 
 pub mod strong {

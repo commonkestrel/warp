@@ -784,7 +784,7 @@ impl Expr {
                                 Some(param) => {
                                     params_inner.push((param, Token![,]));
                                     cursor.step();
-                                },
+                                }
                                 None => {
                                     cursor.reporter().report_sync(spanned_error!(
                                         tok.span().clone(),
@@ -1054,7 +1054,7 @@ impl Path {
                 let span = last.span().clone();
                 Spanned::new(PathSegment::Ident(*ident), span)
             }
-            None => self.start.clone()
+            None => self.start.clone(),
         }
     }
 

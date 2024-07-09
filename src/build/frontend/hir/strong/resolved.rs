@@ -6,9 +6,16 @@ use slotmap::SlotMap;
 use crate::{
     build::{
         ascii::AsciiStr,
-        frontend::hir::{weak::unresolved::{self, Item, ItemId, UnresolvedDb}, Type},
-        syntax::ast::{BinaryOp, Path, UnaryOp},
+        frontend::hir::{
+            weak::unresolved::{self, Item, ItemId, UnresolvedDb},
+            Type,
+        },
+        syntax::{
+            ast::{BinaryOp, Path, UnaryOp},
+            token::Ident,
+        },
     },
+    diagnostic::Reporter,
     span::Spanned,
 };
 
@@ -19,11 +26,29 @@ pub struct Typed<T: Clone> {
 }
 
 pub struct Database {
-    items: SlotMap<ItemId, Item>
+    items: HashMap<Ident, ItemId>,
 }
 
 impl Database {
-    pub fn resolve_package(unresolved: UnresolvedDb, libs: HashMap<PathBuf, UnresolvedDb>, items: SlotMap<ItemId, unresolved::Item>) -> Option<Database> {
+    pub async fn resolve_package(
+        unresolved: UnresolvedDb,
+        root: ItemId,
+        superspace: Option<ItemId>,
+        libs: &HashMap<PathBuf, ItemId>,
+        items: &SlotMap<ItemId, unresolved::Item>,
+        resolved_items: &mut &SlotMap<ItemId, Item>,
+        reporter: &Reporter,
+    ) -> Option<Database> {
+        for (ident, (ident_span, path)) in unresolved.imports {
+            match unresolved
+                .resolve_path(path.into_inner(), root, superspace, items, libs, reporter)
+                .await
+            {
+                Some(item) => {}
+                None => continue,
+            }
+        }
+
         todo!()
     }
 }
