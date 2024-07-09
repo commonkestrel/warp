@@ -30,8 +30,8 @@ pub struct Database {
 }
 
 impl Database {
-    pub async fn resolve_package(
-        unresolved: UnresolvedDb,
+    pub async fn resolve(
+        udb: &UnresolvedDb,
         root: ItemId,
         superspace: Option<ItemId>,
         libs: &HashMap<PathBuf, ItemId>,
@@ -39,12 +39,11 @@ impl Database {
         resolved_items: &mut &SlotMap<ItemId, Item>,
         reporter: &Reporter,
     ) -> Option<Database> {
-        for (ident, (ident_span, path)) in unresolved.imports {
-            match unresolved
-                .resolve_path(path.into_inner(), root, superspace, items, libs, reporter)
-                .await
-            {
-                Some(item) => {}
+        for (ident, (ident_span, path)) in udb.imports.iter() {
+            match unresolved::resolve_path(&udb.items, &udb.libs, path.inner().clone(), root, superspace, resolved_items, libs, reporter).await {
+                Some(item) => {
+
+                }
                 None => continue,
             }
         }

@@ -232,106 +232,9 @@ impl UnresolvedDb {
         db
     }
 
-    pub async fn resolve_path(
-        &self,
-        path: Path,
-        root: ItemId,
-        superspace: Option<ItemId>,
-        items: &SlotMap<ItemId, Item>,
-        libs: &HashMap<PathBuf, ItemId>,
-        reporter: &Reporter,
-    ) -> Option<ItemId> {
-        let (start, mut base_span) = path.start().clone().deconstruct();
-        let (mut item, same_package) = match start {
-            PathSegment::Root => (root, true),
-            PathSegment::Super => match superspace {
-                Some(sup) => (sup, true),
-                None => {
-                    reporter
-                        .report(spanned_error!(
-                            base_span,
-                            "already at project root; no superspace available"
-                        ))
-                        .await;
-                    return None;
-                }
-            },
-            PathSegment::Ident(id) => {
-                match self.get_local(&Spanned::new(id, base_span.clone()), libs) {
-                    Ok(item) => (item.0.into_inner(), item.1),
-                    Err(err) => {
-                        reporter.report(err).await;
-                        return None;
-                    }
-                }
-            }
-        };
+    
 
-        for segment in path.segments() {
-            let base = match items.get(item) {
-                Some(base) => base,
-                None => {
-                    reporter
-                        .report(
-                            spanned_error!(base_span, "no item found for referenced base").as_bug(),
-                        )
-                        .await;
-                    return None;
-                }
-            };
-
-            match base.get(
-                &base_span,
-                segment,
-                if same_package {
-                    Visibility::Protected
-                } else {
-                    Visibility::Public
-                },
-            ) {
-                Ok(it) => {
-                    item = it;
-                    base_span = segment.span().clone();
-                }
-                Err(err) => {
-                    reporter.report(err).await;
-                    return None;
-                }
-            }
-        }
-
-        Some(item)
-    }
-
-    pub fn get_local(
-        &self,
-        index: &Spanned<Ident>,
-        libs: &HashMap<PathBuf, ItemId>,
-    ) -> Result<(Spanned<ItemId>, bool), Diagnostic> {
-        if let Some(item) = self.items.get(index.inner()) {
-            return Ok((Spanned::new(*item.inner(), item.ident_span().clone()), true));
-        }
-
-        match self.libs.get(index.inner()) {
-            Some(item) => {
-                let lib = match libs.get(item.inner()) {
-                    Some(lib) => lib,
-                    None => {
-                        return Err(spanned_error!(
-                            index.span().clone(),
-                            "library is not present in item map"
-                        )
-                        .as_bug())
-                    }
-                };
-                Ok((Spanned::new(*lib, item.span().clone()), false))
-            }
-            None => Err(spanned_error!(
-                index.span().clone(),
-                "item does not exist in subspace or package"
-            )),
-        }
-    }
+    
 
     pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<ItemId>, Diagnostic> {
         match self.items.get(index.inner()) {
@@ -341,6 +244,109 @@ impl UnresolvedDb {
                 "item does not exist in subspace or package"
             )),
         }
+    }
+}
+
+pub async fn resolve_path(
+    item_map: &HashMap<Ident, Visible<ItemId>>,
+    lib_map: &HashMap<Ident, Spanned<PathBuf>>, 
+    path: Path,
+    root: ItemId,
+    superspace: Option<ItemId>,
+    items: &SlotMap<ItemId, Item>,
+    libs: &HashMap<PathBuf, ItemId>,
+    reporter: &Reporter,
+) -> Option<ItemId> {
+    let (start, mut base_span) = path.start().clone().deconstruct();
+    let (mut item, same_package) = match start {
+        PathSegment::Root => (root, true),
+        PathSegment::Super => match superspace {
+            Some(sup) => (sup, true),
+            None => {
+                reporter
+                    .report(spanned_error!(
+                        base_span,
+                        "already at project root; no superspace available"
+                    ))
+                    .await;
+                return None;
+            }
+        },
+        PathSegment::Ident(id) => {
+            match get_local(item_map, lib_map, &Spanned::new(id, base_span.clone()), libs) {
+                Ok(item) => (item.0.into_inner(), item.1),
+                Err(err) => {
+                    reporter.report(err).await;
+                    return None;
+                }
+            }
+        }
+    };
+
+    for segment in path.segments() {
+        let base = match items.get(item) {
+            Some(base) => base,
+            None => {
+                reporter
+                    .report(
+                        spanned_error!(base_span, "no item found for referenced base").as_bug(),
+                    )
+                    .await;
+                return None;
+            }
+        };
+
+        match base.get(
+            &base_span,
+            segment,
+            if same_package {
+                Visibility::Protected
+            } else {
+                Visibility::Public
+            },
+        ) {
+            Ok(it) => {
+                item = it;
+                base_span = segment.span().clone();
+            }
+            Err(err) => {
+                reporter.report(err).await;
+                return None;
+            }
+        }
+    }
+
+    Some(item)
+}
+
+pub fn get_local(
+    items: &HashMap<Ident, Visible<ItemId>>,
+    lib_map: &HashMap<Ident, Spanned<PathBuf>>, 
+    index: &Spanned<Ident>,
+    libs: &HashMap<PathBuf, ItemId>,
+) -> Result<(Spanned<ItemId>, bool), Diagnostic> {
+    if let Some(item) = items.get(index.inner()) {
+        return Ok((Spanned::new(*item.inner(), item.ident_span().clone()), true));
+    }
+
+    match lib_map.get(index.inner()) {
+        Some(item) => {
+            let lib = match libs.get(item.inner()) {
+                Some(lib) => lib,
+                None => {
+                    return Err(spanned_error!(
+                        index.span().clone(),
+                        "library is not present in item map"
+                    )
+                    .as_bug())
+                }
+            };
+            Ok((Spanned::new(*lib, item.span().clone()), false))
+        }
+        None => Err(spanned_error!(
+            index.span().clone(),
+            "item does not exist in subspace or package"
+        )),
     }
 }
 
