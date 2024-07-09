@@ -165,6 +165,17 @@ impl UnresolvedDb {
             }
         }
 
+        for (id, subspace, vis) in src.subspaces {
+            let (ident, ident_span) = id.deconstruct();
+            let (space, space_span) = subspace.deconstruct();
+
+            let db = Box::pin(UnresolvedDb::compile(space, symbol_table.clone(), libraries, reporter.clone())).await;
+            let item = Arc::new(Spanned::new(Item::Subspace(db), space_span));
+            if let Some(_) = items.insert(ident, Visible::new(ident_span.clone(), vis, item)) {
+                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            }
+        }
+
         UnresolvedDb { items, imports, libs }
     }
 

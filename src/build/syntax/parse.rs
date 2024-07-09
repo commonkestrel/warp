@@ -51,7 +51,7 @@ pub struct Namespace {
     pub constants: Vec<(Spanned<Const>, Visibility)>,
     pub statics: Vec<(Spanned<Static>, Visibility)>,
     pub progmem: Vec<(Spanned<Progmem>, Visibility)>,
-    pub subspaces: Vec<(Spanned<Ident>, Namespace, Visibility)>,
+    pub subspaces: Vec<(Spanned<Ident>, Spanned<Namespace>, Visibility)>,
 }
 
 impl Namespace {
@@ -185,8 +185,9 @@ impl Namespace {
                         }
                     };
 
-                    match cursor.peek().map(Spanned::inner) {
-                        Some(Token::Delimeter(Delimeter::OpenBrace)) => {
+                    match cursor.peek() {
+                        Some(Spanned {inner: Token::Delimeter(Delimeter::OpenBrace), span}) => {
+                            let start_span = span.clone();
                             let mut depth = 0;
                             let start = cursor.position + 1;
 
@@ -195,6 +196,8 @@ impl Namespace {
                                     Token::Delimeter(Delimeter::OpenBrace) => depth += 1,
                                     Token::Delimeter(Delimeter::CloseBrace) => {
                                         if depth == 1 {
+                                            let space_span = start_span.to(tok.span());
+
                                             let space_subdir = subdir.join(
                                                 cursor.symbol_table.get(ident.inner().symbol).await,
                                             );
@@ -209,7 +212,7 @@ impl Namespace {
                                             {
                                                 namespace
                                                     .subspaces
-                                                    .push((ident, subspace, visibility));
+                                                    .push((ident, Spanned::new(subspace, space_span), visibility));
                                             }
                                             visibility = Visibility::Private;
                                             cursor.step();
@@ -267,7 +270,11 @@ impl Namespace {
                             if let Ok(subspace) =
                                 Box::pin(Namespace::parse(&mut cursor, subspace_dir)).await
                             {
-                                namespace.subspaces.push((ident, subspace, visibility));
+                                let eof = cursor.eof_span();
+                                let end = eof.end();
+                                let span = eof.with_location(0..end);
+
+                                namespace.subspaces.push((ident, Spanned::new(subspace, span), visibility));
                             }
                             visibility = Visibility::Private;
                         }
