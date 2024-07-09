@@ -1,12 +1,12 @@
 use crate::{build::syntax::{ast::Mutability, parse::Visibility}, diagnostic::Diagnostic, span::{Span, Spanned}};
 
 pub mod weak {
-    pub mod hir;
+    pub mod unresolved;
     pub mod lib;
 }
 
 pub mod strong {
-    pub mod mir;
+    pub mod resolved;
 }
 
 #[derive(Debug, Clone)]

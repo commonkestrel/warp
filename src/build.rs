@@ -2,7 +2,8 @@ use std::{collections::HashMap, env, path::PathBuf, process::ExitCode};
 
 use async_std::{fs::File, io::WriteExt};
 use clio::{Input, Output};
-use frontend::inference::{weak::hir::UnresolvedDb, Database};
+use frontend::hir::{weak::unresolved::UnresolvedDb, Database};
+use slotmap::SlotMap;
 use symbol_table::SymbolTable;
 use syntax::{
     ast::Function,
@@ -14,7 +15,7 @@ use syntax::{
 use crate::{diagnostic::Reporter, error, span::Spanned};
 
 mod frontend {
-    pub mod inference;
+    pub mod hir;
     pub mod uncaught_error;
 }
 
@@ -101,7 +102,8 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
     };
 
     let mut libs = HashMap::new();
-    let db = UnresolvedDb::compile(namespace, lexed.symbol_table, &mut libs, reporter.clone()).await;
+    let mut items = SlotMap::with_key();
+    let db = UnresolvedDb::compile(namespace, lexed.symbol_table, &mut libs, &mut items, reporter.clone()).await;
 
     match File::create(output).await {
         Ok(mut file) => match write!(file, "{:#?}", db).await {

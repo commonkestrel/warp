@@ -9,17 +9,17 @@ use slotmap::SlotMap;
 use crate::{
     build::{symbol_table::SymbolTable, syntax},
     diagnostic::Reporter,
-    error,
     span::Span,
     spanned_error,
 };
 
-use super::hir::UnresolvedDb;
+use super::unresolved::{Item, ItemId, UnresolvedDb};
 
 pub async fn resolve_lib(
     root_path: PathBuf,
     span: &Span,
     libs: &mut HashMap<PathBuf, UnresolvedDb>,
+    items: &mut SlotMap<ItemId, Item>,
     symbol_table: SymbolTable,
     reporter: &Reporter,
 ) -> UnresolvedDb {
@@ -66,6 +66,5 @@ pub async fn resolve_lib(
         }
     };
 
-    let mut items = SlotMap::with_key();
-    Box::pin(UnresolvedDb::compile(namespace, lexed.symbol_table, libs, &mut items, reporter)).await
+    Box::pin(UnresolvedDb::compile(namespace, lexed.symbol_table, libs, items, reporter)).await
 }

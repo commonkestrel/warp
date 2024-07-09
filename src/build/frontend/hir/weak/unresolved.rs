@@ -6,7 +6,7 @@ use slotmap::{new_key_type, SlotMap};
 use crate::{
     build::{
         ascii::AsciiStr,
-        frontend::{inference::{Type, Visible}, uncaught_error::UncaughtUnwrap},
+        frontend::{hir::{Type, Visible}, uncaught_error::UncaughtUnwrap},
         symbol_table::SymbolTable,
         syntax::{
             ast::{BinaryOp, Expr, Mutability, Path, PathSegment, Statement, UnaryOp},
@@ -59,6 +59,7 @@ impl UnresolvedDb {
                     lib_path.clone(),
                     ident.span(),
                     libraries,
+                    items,
                     symbol_table.clone(),
                     &reporter,
                 )
@@ -109,7 +110,9 @@ impl UnresolvedDb {
             });
 
             let id = items.insert(function);
-            db.items.insert(ident, Visible::new(ident_span, vis, id));
+            if db.items.insert(ident, Visible::new(ident_span.clone(), vis, id)).is_some() {
+                reporter.report(spanned_error!(ident_span, "duplicate identifier")).await;
+            }
         }
 
         for path in src.imports {
@@ -185,21 +188,49 @@ impl UnresolvedDb {
         db
     }
 
-    pub async fn resolve_path(path: Spanned<Path>, root: ItemId, superspace: Option<ItemId>, reporter: &Reporter) -> Option<ItemId> {
-        let (start, start_span) = path.start().clone().deconstruct();
-        let mut item = match start {
-            PathSegment::Root => Some(root),
+    pub async fn resolve_path(&self, path: Path, root: ItemId, superspace: Option<ItemId>, items: &SlotMap<ItemId, Item>, reporter: &Reporter) -> Option<ItemId> {
+        let (start, mut base_span) = path.start().clone().deconstruct();
+        let (mut item, same_package) = match start {
+            PathSegment::Root => (root, true),
             PathSegment::Super => match superspace {
-                Some(sup) => Some(sup),
+                Some(sup) => (sup, true),
                 None => {
-                    reporter.report(spanned_error!(start_span, "no superspace found for current space")).await;
-                    None
+                    reporter.report(spanned_error!(base_span, "already at project root; no superspace available")).await;
+                    return None;
                 }
             },
-            PathSegment::Ident(id) => todo!()
+            PathSegment::Ident(id) => match self.get_local(&Spanned::new(id, base_span.clone())) {
+                Ok(item) => (item.0.into_inner(), item.1),
+                Err(err) => {
+                    reporter.report(err).await;
+                    return None;
+                }
+            }
         };
 
-        todo!();
+        for segment in path.segments() {
+            let base = match items.get(item) {
+                Some(base) => base,
+                None => {
+                    reporter.report(spanned_error!(base_span, "no item found for referenced base").as_bug()).await;
+                    return None;
+                }
+            };
+
+            match todo!() {
+                Ok(it) => item = it,
+                Err(err) => {
+                    reporter.report(err).await;
+                    return None;
+                }
+            }
+        }
+
+        Some(item)
+    }
+
+    pub fn get_local(&self, index: &Spanned<Ident>) -> Result<(Spanned<ItemId>, bool), Diagnostic> {
+        todo!()
     }
 
     pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<ItemId>, Diagnostic> {
@@ -229,7 +260,9 @@ pub enum Item {
     Const(Spanned<Expr>),
     Static(Static),
     Progmem(Progmem),
+    Import(ItemId),
     Subspace(UnresolvedDb),
+    Library(UnresolvedDb),
 }
 
 impl Item {
@@ -238,20 +271,20 @@ impl Item {
             Item::Fn(_) => "function",
             Item::Const(_) => "constant",
             Item::Static(_) => "static",
+            Item::Import(_) => "import",
             Item::Progmem(_) => "program memory",
             Item::Subspace(_) => "subspace",
+            Item::Library(_) => "library",
         }
     }
-}
 
-impl Visible<Spanned<Item>> {
     pub fn get(
         &self,
-        parent: Spanned<Ident>,
+        parent: &Spanned<Ident>,
         idx: &Spanned<Ident>,
         reachable: Visibility,
     ) -> Result<ItemId, Diagnostic> {
-        match self.inner().inner() {
+        match self {
             Item::Subspace(db) => match db.get(idx) {
                 Ok(item) => {
                     let visible = match item.visibility() {
@@ -278,12 +311,16 @@ impl Visible<Spanned<Item>> {
                 Err(err) => Err(err),
             },
             _ => Err(spanned_error!(
-                parent.into_span(),
+                parent.span().clone(),
                 "{} is not a package or subspace",
-                self.inner().description()
+                self.description()
             )),
         }
     }
+}
+
+impl Visible<Spanned<Item>> {
+    
 }
 
 #[derive(Debug, Clone)]

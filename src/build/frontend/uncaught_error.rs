@@ -1,6 +1,6 @@
 use crate::{build::syntax, diagnostic::Diagnostic, span::Spanned, spanned_error};
 
-use super::inference;
+use super::hir;
 
 pub trait UncaughtUnwrap {
     type Output;
@@ -9,10 +9,10 @@ pub trait UncaughtUnwrap {
 }
 
 impl UncaughtUnwrap for Spanned<syntax::ast::Type> {
-    type Output = Spanned<inference::Type>;
+    type Output = Spanned<hir::Type>;
 
     fn unwrap(self) -> Result<Self::Output, Diagnostic> {
-        use inference::Type as IT;
+        use hir::Type as IT;
         use syntax::ast::Type as ST;
         let (ty, span) = self.deconstruct();
 

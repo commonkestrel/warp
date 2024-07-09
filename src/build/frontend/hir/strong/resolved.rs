@@ -1,7 +1,7 @@
 use crate::{
     build::{
         ascii::AsciiStr,
-        frontend::inference::Type,
+        frontend::hir::Type,
         syntax::ast::{BinaryOp, Path, UnaryOp},
     },
     span::Spanned,

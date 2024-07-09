@@ -1058,6 +1058,14 @@ impl Path {
         }
     }
 
+    pub fn segments(&self) -> &[Spanned<Ident>] {
+        return self.segments.as_slice();
+    }
+
+    pub fn into_segments(self) -> Vec<Spanned<Ident>> {
+        self.segments
+    }
+
     pub fn end_segment(&self) -> Option<Spanned<Ident>> {
         self.segments.last().cloned()
     }
