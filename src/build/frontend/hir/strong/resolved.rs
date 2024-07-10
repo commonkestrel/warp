@@ -7,7 +7,7 @@ use crate::{
     build::{
         ascii::AsciiStr,
         frontend::hir::{
-            weak::unresolved::{self, Item, ItemId, UnresolvedDb},
+            weak::unresolved::{self, ItemId, UnresolvedDb},
             Type, Visible,
         },
         syntax::{
@@ -42,9 +42,10 @@ impl Database {
         resolved_items: &mut &SlotMap<ItemId, Item>,
         reporter: &Reporter,
     ) -> Option<Database> {
+        let item_ptr = items as *mut SlotMap<ItemId, unresolved::Item>;
         let udb = match items.get_mut(self_id) {
             Some(item) => match item {
-                Item::Subspace(udb) | Item::Library(udb) => udb,
+                unresolved::Item::Subspace(udb) | unresolved::Item::Library(udb) => udb,
                 _ => {
                     reporter
                         .report(
@@ -63,6 +64,7 @@ impl Database {
             }
         };
 
+        // Resolve imports and add them to the subspace's items
         for (ident, (ident_span, path)) in udb.imports.iter() {
             match unresolved::resolve_path(
                 &udb.items,
@@ -70,7 +72,8 @@ impl Database {
                 path.inner().clone(),
                 root,
                 superspace,
-                resolved_items,
+                // SAFETY: We can guarentee that `udb` will never be modified in a way that affects `resolve_path`
+                unsafe { &*item_ptr },
                 libs,
                 reporter,
             )
@@ -79,6 +82,7 @@ impl Database {
                 Some(item) => {
                     if let Some(_) = udb.items.insert(
                         *ident,
+                        // Since imports cannot be public, it's ok to just add them with a Private visibility
                         Visible::new(ident_span.clone(), Visibility::Private, item),
                     ) {
                         reporter
@@ -90,8 +94,30 @@ impl Database {
             }
         }
 
+        for id in items.iter().filter_map(|item| match item.1 {
+            unresolved::Item::Library(_) => Some(item.0),
+            _ => None,
+        }) {
+            if let Some(db) = Box::pin(Database::resolve(
+                id,
+                id,
+                None,
+                libs,
+                // SAFETY: We can guarentee that `items` will never be modified in a way that affects `iter`
+                unsafe { &mut *item_ptr },
+                resolved_items,
+                reporter,
+            )).await {
+
+            }
+        }
         todo!()
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum Item {
+
 }
 
 #[derive(Debug, Clone)]
