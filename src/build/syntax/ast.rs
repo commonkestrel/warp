@@ -431,7 +431,7 @@ pub struct ForLoop {
 #[derive(Debug, Clone)]
 pub struct ForHeader {
     init: Spanned<Statement>,
-    check: Spanned<Statement>,
+    check: Spanned<Expr>,
     post: Spanned<Statement>,
 }
 
@@ -440,7 +440,7 @@ impl Parsable for ForHeader {
         let init = Statement::parse(cursor);
         cursor.expect_semicolon();
 
-        let check = Statement::parse(cursor);
+        let check = Expr::parse_assignment(cursor);
         cursor.expect_semicolon();
 
         let post = Statement::parse(cursor);
@@ -455,7 +455,7 @@ impl Parsable for ForHeader {
 
 #[derive(Debug, Clone)]
 pub struct WhileLoop {
-    check: Spanned<Statement>,
+    check: Spanned<Expr>,
     contents: Spanned<Statement>,
 }
 

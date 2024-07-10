@@ -11,9 +11,9 @@ use crate::{
             Type, Visible,
         },
         syntax::{
-            ast::{BinaryOp, Path, UnaryOp},
+            ast::{BinaryOp, Mutability, Path, UnaryOp},
             parse::Visibility,
-            token::Ident,
+            token::{Ident, LitString},
         },
     },
     diagnostic::Reporter,
@@ -128,6 +128,43 @@ pub enum MaybeType {
     WeakPointer(Box<MaybeType>),
     WeakArray(Box<MaybeType>),
     WeakTuple(Vec<MaybeType>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Statement {
+    Expr(Expr),
+    Block(Vec<Spanned<Statement>>),
+    If {
+        condition: Spanned<Expr>,
+        content: Box<Spanned<Statement>>,
+        else_block: Option<Box<Spanned<Statement>>>,
+    },
+    For(Box<ForLoop>),
+    While(Box<WhileLoop>),
+    Break,
+    Continue,
+    Return(Option<Spanned<Expr>>),
+    Asm(LitString),
+    Var {
+        mutability: Mutability,
+        ident: Spanned<Ident>,
+        ty: MaybeType,
+        assignment: Spanned<Expr>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct ForLoop {
+    init: Spanned<Statement>,
+    check: Spanned<Expr>,
+    post: Spanned<Statement>,
+    content: Spanned<Statement>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileLoop {
+    check: Spanned<Expr>,
+    contents: Spanned<Statement>,
 }
 
 #[derive(Debug, Clone)]
