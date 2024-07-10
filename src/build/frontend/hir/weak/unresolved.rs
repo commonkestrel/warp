@@ -232,10 +232,6 @@ impl UnresolvedDb {
         db
     }
 
-    
-
-    
-
     pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<ItemId>, Diagnostic> {
         match self.items.get(index.inner()) {
             Some(item) => Ok(item.clone()),
@@ -249,7 +245,7 @@ impl UnresolvedDb {
 
 pub async fn resolve_path(
     item_map: &HashMap<Ident, Visible<ItemId>>,
-    lib_map: &HashMap<Ident, Spanned<PathBuf>>, 
+    lib_map: &HashMap<Ident, Spanned<PathBuf>>,
     path: Path,
     root: ItemId,
     superspace: Option<ItemId>,
@@ -273,7 +269,12 @@ pub async fn resolve_path(
             }
         },
         PathSegment::Ident(id) => {
-            match get_local(item_map, lib_map, &Spanned::new(id, base_span.clone()), libs) {
+            match get_local(
+                item_map,
+                lib_map,
+                &Spanned::new(id, base_span.clone()),
+                libs,
+            ) {
                 Ok(item) => (item.0.into_inner(), item.1),
                 Err(err) => {
                     reporter.report(err).await;
@@ -288,9 +289,7 @@ pub async fn resolve_path(
             Some(base) => base,
             None => {
                 reporter
-                    .report(
-                        spanned_error!(base_span, "no item found for referenced base").as_bug(),
-                    )
+                    .report(spanned_error!(base_span, "no item found for referenced base").as_bug())
                     .await;
                 return None;
             }
@@ -321,7 +320,7 @@ pub async fn resolve_path(
 
 pub fn get_local(
     items: &HashMap<Ident, Visible<ItemId>>,
-    lib_map: &HashMap<Ident, Spanned<PathBuf>>, 
+    lib_map: &HashMap<Ident, Spanned<PathBuf>>,
     index: &Spanned<Ident>,
     libs: &HashMap<PathBuf, ItemId>,
 ) -> Result<(Spanned<ItemId>, bool), Diagnostic> {
