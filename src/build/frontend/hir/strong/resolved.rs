@@ -28,6 +28,7 @@ pub struct Typed<T: Clone> {
     ty: MaybeType,
 }
 
+#[derive(Debug, Clone)]
 pub struct Database {
     items: HashMap<Ident, ItemId>,
 }
@@ -39,7 +40,7 @@ impl Database {
         superspace: Option<ItemId>,
         libs: &HashMap<PathBuf, ItemId>,
         items: &mut SlotMap<ItemId, unresolved::Item>,
-        resolved_items: &mut &SlotMap<ItemId, Item>,
+        resolved_items: &mut HashMap<ItemId, Item>,
         reporter: &Reporter,
     ) -> Option<Database> {
         let item_ptr = items as *mut SlotMap<ItemId, unresolved::Item>;
@@ -108,16 +109,67 @@ impl Database {
                 resolved_items,
                 reporter,
             )).await {
+                resolved_items.insert(id, Item::Subspace(db));
+            }
+        }
+        
+        for id in items.iter().filter_map(|item| match item.1 {
+            unresolved::Item::Subspace(_) => Some(item.0),
+            _ => None,
+        }) {
+            if let Some(db) = Box::pin(Database::resolve(
+                id,
+                root,
+                Some(self_id),
+                libs,
+                // SAFETY: We can guarentee that `items` will never be modified in a way that affects `iter`
+                unsafe { &mut *item_ptr },
+                resolved_items,
+                reporter,
+            )).await {
 
             }
         }
+
         todo!()
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum Item {
+    Fn(Function),
+    Const(Spanned<Expr>),
+    Static(Static),
+    Progmem(Progmem),
+    Subspace(Database),
+    Library(Database),
+}
 
+#[derive(Debug, Clone)]
+pub struct Function {
+
+}
+
+#[derive(Debug, Clone)] 
+pub struct Static {
+
+}
+
+#[derive(Debug, Clone)]
+pub struct Progmem {
+
+}
+
+#[derive(Debug, Clone)]
+pub struct WeakTyped<T> {
+    ty: MaybeType,
+    inner: T,
+}
+
+impl<T> WeakTyped<T> {
+    pub fn new(inner: T, ty: MaybeType) -> Self {
+        Self {ty, inner}
+    }
 }
 
 #[derive(Debug, Clone)]
