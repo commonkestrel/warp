@@ -8,7 +8,6 @@ repository = "https://github.com/commonkestrel/warp"
 exclude = ["/examples"]
 
 [dependencies]
-async-std = { version = "1.12.0", features = ["attributes"] }
 clap = { version = "4.5.8", features = ["derive"] }
 clap-verbosity-flag = "2.2.0"
 clio = { version = "0.3.5", features = ["clap-parse"] }
@@ -16,9 +15,12 @@ colored = "2.1.0"
 git2 = "0.19.0"
 home = "0.5.9"
 lazy-regex = "3.1.0"
-logos = "0.14.0"
+logos = "0.15"
+nurse = { git = "https://github.com/commonkestrel/nurse", version = "0.1.0", features = ["smol"] }
 oem_cp = "2.0.0"
 slotmap = "1.0.7"
+smol = "2.0.2"
+smol-macros = "0.1.1"
 url = "2.5.2"
 
 [[bin]]

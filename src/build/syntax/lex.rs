@@ -1,15 +1,9 @@
 use std::sync::Arc;
-
-use crate::{
-    diagnostic::Diagnostic,
-    error, info,
-    span::{Lookup, Span, Spanned},
-    spanned_error,
-};
-
-use async_std::{
+use std::io::Stdout;
+use nurse::prelude::*;
+use smol::{
     fs::File,
-    io::{prelude::*, BufReader},
+    io::{BufReader, AsyncReadExt},
 };
 use logos::{Lexer, Logos};
 
@@ -26,58 +20,58 @@ pub type Errors = Vec<Diagnostic>;
 
 pub struct LexResult {
     pub stream: TokenStream,
-    pub source: Arc<String>,
-    pub lookup: Arc<Lookup>,
     pub symbol_table: SymbolTable,
+    pub lookup: nurse::LookupKey,
 }
 
 pub async fn lex(
     symbol_table: SymbolTable,
     source: String,
-    content: File,
-) -> Result<LexResult, Errors> {
+    mut content: File,
+    reporter: &TerminalReporter<Stdout>,
+) -> Result<LexResult, ()> {
     let mut tokens = TokenStream::new();
-    let mut errors = Errors::new();
-    let source = Arc::new(source);
 
-    let mut buf = BufReader::new(&content);
+    let mut buf = BufReader::new(&mut content);
     let mut file = String::new();
-    buf.read_to_string(&mut file).await.map_err(|err| {
-        vec![error!(
-            "encountered an unexpected error reading file `{source}: {err}`"
-        )]
-    })?;
+    if let Err(err) = buf.read_to_string(&mut file).await {
+        reporter.report(error!("encountered an unexpected error reading file `{source}: {err}`")).await;
+        return Err(())
+    }
     // Replace tabs with spaces to keep character spacing the same
-    let file = Arc::new(file.replace('\t', TAB_SPACING).replace("\r", ""));
-    let lookup = Arc::new(Lookup::new(file.clone()));
+    let file = file.replace('\t', TAB_SPACING).replace("\r", "");
+    let lookup = reporter.register_file(source, file.clone()).await;
 
     let mut lex = Token::lexer_with_extras(&file, symbol_table);
 
     while let Some(tok) = lex.next() {
-        let s = Span::new(source.clone(), lookup.clone(), lex.span());
+        let s = Span::new(lookup, lex.span());
 
         match tok {
             Ok(tok) => {
                 let token = Spanned::new(tok, s);
                 tokens.push(token);
             }
-            Err(mut err) => {
-                err.set_span(Some(s));
-                err.set_message(format!("unrecognized token `{}`", lex.slice()));
-                errors.push(err)
+            Err(err) => {
+                let diagnostic = if err.is_empty() {
+                    error!(s, "unrecognized token `{}`", lex.slice())
+                } else {
+                    Diagnostic::spanned_error(s, err)
+                };
+                
+                reporter.report(diagnostic).await;
             }
         }
     }
 
-    if errors.is_empty() {
+    if reporter.is_empty().await {
         Ok(LexResult {
             stream: tokens,
-            source,
-            lookup,
             symbol_table: lex.extras,
+            lookup
         })
     } else {
-        Err(errors)
+        Err(())
     }
 }
 
@@ -86,10 +80,14 @@ pub fn lex_string(content: &str, source: &str) -> Result<TokenStream, Errors> {
 }
 
 impl Parsable for Spanned<Token> {
-    fn parse(cursor: &mut super::parse::Cursor) -> Result<Self, Diagnostic> {
-        cursor
-            .next()
-            .ok_or_else(|| spanned_error!(cursor.eof_span(), "expected token, found `EOF`"))
+    async fn parse(cursor: &mut super::parse::Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()> {
+        match cursor.next() {
+            Some(tok) => Ok(tok),
+            None => {
+                reporter.report(error!(cursor.eof(), "expected token, found `EOF`")).await;
+                Err(())
+            }
+        }
     }
 
     fn description(&self) -> &'static str {
@@ -98,7 +96,7 @@ impl Parsable for Spanned<Token> {
 }
 
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(error = Diagnostic)]
+#[logos(error = String)]
 #[logos(extras = SymbolTable)]
 #[logos(skip r"[ \t\f\n\r]")]
 #[logos(skip r"//[^!][^\n]*\n?")]
@@ -245,67 +243,67 @@ impl Token {
         i128::from_str_radix(&slice.strip_prefix("0x")?, 16).ok()
     }
 
-    fn char(lex: &mut Lexer<Token>) -> Result<i128, Diagnostic> {
+    fn char(lex: &mut Lexer<Token>) -> Result<i128, String> {
         let slice = lex.slice();
         Self::char_from_str(slice).map(|c| c.into())
     }
 
-    fn char_from_str(s: &str) -> Result<u8, Diagnostic> {
+    fn char_from_str(s: &str) -> Result<u8, String> {
         let inner = s
             .strip_prefix('\'')
-            .ok_or_else(|| error!("char not prefixed with `'`"))?
+            .ok_or_else(|| "char not prefixed with `'`".to_owned())?
             .strip_suffix('\'')
-            .ok_or_else(|| error!("char not suffixed with `'`"))?;
+            .ok_or_else(|| "char not suffixed with `'`".to_owned())?;
 
         let escaped = unescape_str(inner).map_err(|err| {
-            Diagnostic::error(match err {
+            match err {
                 UnescapeError::InvalidAscii => format!("invalid ASCII"),
                 UnescapeError::UnmatchedBackslash(index) => {
                     format!("unmatched `\\` at string index {index}")
                 }
-            })
+            }
         })?;
         Ok(escaped[0])
     }
 
-    fn string(lex: &mut Lexer<Token>) -> Result<AsciiStr, Diagnostic> {
+    fn string(lex: &mut Lexer<Token>) -> Result<AsciiStr, String> {
         let slice = lex
             .slice()
             .strip_prefix("\"")
-            .ok_or_else(|| error!("string not prefixed with `\"`"))?
+            .ok_or_else(|| "string not prefixed with `\"`".to_owned())?
             .strip_suffix("\"")
-            .ok_or_else(|| error!("string not suffixed with `\"`"))?;
+            .ok_or_else(|| "string not suffixed with `\"`".to_owned())?;
 
         Ok(unescape_str(&slice).map_err(|err| {
-            Diagnostic::error(match err {
+            match err {
                 UnescapeError::InvalidAscii => format!("invalid ASCII"),
                 UnescapeError::UnmatchedBackslash(index) => {
                     format!("unmatched '\\' at string index {index}")
                 }
-            })
+            }
         })?)
     }
 
-    fn raw_string(lex: &mut Lexer<Token>) -> Result<AsciiStr, Diagnostic> {
+    fn raw_string(lex: &mut Lexer<Token>) -> Result<AsciiStr, String> {
         let slice = lex
             .slice()
             .strip_prefix("r#\"")
-            .ok_or_else(|| error!("string not prefixed with `r#\"`"))?
+            .ok_or_else(|| "string not prefixed with `r#\"`".to_owned())?
             .strip_suffix("#\"")
-            .ok_or_else(|| error!("string not suffixed with `\"#`"))?;
+            .ok_or_else(|| "string not suffixed with `\"#`".to_owned())?;
 
         Ok(unescape_str(&slice).map_err(|err| {
-            Diagnostic::error(match err {
+            match err {
                 UnescapeError::InvalidAscii => format!("invalid ASCII"),
                 UnescapeError::UnmatchedBackslash(index) => {
                     format!("unmatched `\\` at string index {index}")
                 }
-            })
+            }
         })?)
     }
 
     fn ident(lex: &mut Lexer<Token>) -> SymbolRef {
-        async_std::task::block_on(lex.extras.find_or_insert(lex.slice()))
+        smol::block_on(lex.extras.find_or_insert(lex.slice()))
     }
 }
 

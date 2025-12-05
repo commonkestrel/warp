@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Stdout};
 
-use async_std::path::PathBuf;
+use std::path::PathBuf;
 use slotmap::SlotMap;
+use nurse::prelude::*;
 
 use crate::{
     build::{
@@ -15,11 +16,7 @@ use crate::{
             parse::Visibility,
             token::{Ident, LitString},
         },
-    },
-    diagnostic::Reporter,
-    error,
-    span::Spanned,
-    spanned_error,
+    }
 };
 
 #[derive(Debug, Clone)]
@@ -41,7 +38,7 @@ impl Database {
         libs: &HashMap<PathBuf, ItemId>,
         items: &mut SlotMap<ItemId, unresolved::Item>,
         resolved_items: &mut HashMap<ItemId, Item>,
-        reporter: &Reporter,
+        reporter: &TerminalReporter<Stdout>,
     ) -> Option<Database> {
         let item_ptr = items as *mut SlotMap<ItemId, unresolved::Item>;
         let udb = match items.get_mut(self_id) {
@@ -50,8 +47,8 @@ impl Database {
                 _ => {
                     reporter
                         .report(
+                            // bug
                             error!("attempted to resolve an item that is not a space or package")
-                                .as_bug(),
                         )
                         .await;
                     return None;
@@ -59,7 +56,8 @@ impl Database {
             },
             None => {
                 reporter
-                    .report(error!("no item found for referenced space").as_bug())
+                    // bug
+                    .report(error!("no item found for referenced space"))
                     .await;
                 return None;
             }
@@ -84,10 +82,10 @@ impl Database {
                     if let Some(_) = udb.items.insert(
                         *ident,
                         // Since imports cannot be public, it's ok to just add them with a Private visibility
-                        Visible::new(ident_span.clone(), Visibility::Private, item),
+                        Visible::new(*ident_span, Visibility::Private, item),
                     ) {
                         reporter
-                            .report(spanned_error!(ident_span.clone(), "duplicate identifier"))
+                            .report(error!(ident_span, "duplicate identifier"))
                             .await;
                     }
                 }
@@ -108,11 +106,13 @@ impl Database {
                 unsafe { &mut *item_ptr },
                 resolved_items,
                 reporter,
-            )).await {
+            ))
+            .await
+            {
                 resolved_items.insert(id, Item::Subspace(db));
             }
         }
-        
+
         for id in items.iter().filter_map(|item| match item.1 {
             unresolved::Item::Subspace(_) => Some(item.0),
             _ => None,
@@ -126,9 +126,9 @@ impl Database {
                 unsafe { &mut *item_ptr },
                 resolved_items,
                 reporter,
-            )).await {
-
-            }
+            ))
+            .await
+            {}
         }
 
         todo!()
@@ -146,19 +146,13 @@ pub enum Item {
 }
 
 #[derive(Debug, Clone)]
-pub struct Function {
-
-}
-
-#[derive(Debug, Clone)] 
-pub struct Static {
-
-}
+pub struct Function {}
 
 #[derive(Debug, Clone)]
-pub struct Progmem {
+pub struct Static {}
 
-}
+#[derive(Debug, Clone)]
+pub struct Progmem {}
 
 #[derive(Debug, Clone)]
 pub struct WeakTyped<T> {
@@ -168,7 +162,7 @@ pub struct WeakTyped<T> {
 
 impl<T> WeakTyped<T> {
     pub fn new(inner: T, ty: MaybeType) -> Self {
-        Self {ty, inner}
+        Self { ty, inner }
     }
 }
 

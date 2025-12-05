@@ -1,22 +1,20 @@
 use std::{
     fmt::Display,
     ops::{Deref, Range},
-    sync::Arc,
+    path::PathBuf,
+    io::Stdout,
 };
 
-use async_std::{fs::File, path::PathBuf};
+use smol::fs::File;
+use nurse::prelude::*;
 
 use crate::{
+    seek,
     build::{
         lib::locator::locate_library,
         symbol_table::SymbolTable,
         syntax::{info::CompInfo, lex::Keyword},
-    },
-    debug,
-    diagnostic::{Diagnostic, Reporter},
-    info, seek,
-    span::{Lookup, Span, Spanned},
-    spanned_error, spanned_info,
+    }
 };
 
 use super::{
@@ -28,18 +26,33 @@ use super::{
     },
 };
 
+#[macro_export]
+macro_rules! seek {
+    ($cursor:expr, $token:pat) => {
+        while !$cursor.at_end() {
+            if matches!($cursor.peek().map(Spanned::inner), Some($token)) {
+                break;
+            }
+            $cursor.position += 1;
+        }
+    };
+}
+
 pub async fn parse(
     stream: &[Spanned<Token>],
-    source_name: Arc<String>,
-    lookup: Arc<Lookup>,
-    reporter: Reporter,
+    reporter: &TerminalReporter<Stdout>,
     symbol_table: &SymbolTable,
     subdir: PathBuf,
-) -> Result<Namespace, Reporter> {
-    let mut cursor = Cursor::new(stream, source_name, lookup, symbol_table, reporter);
-    Namespace::parse(&mut cursor, subdir)
-        .await
-        .map_err(|_| cursor.take_reporter())
+) -> Result<Namespace, ()> {
+    if stream.is_empty() {
+        Ok(Namespace::new(subdir))
+    } else {
+        let eof = reporter.eof_span(stream[0].span().lookup()).await;
+        let mut cursor = Cursor::new(stream, symbol_table, eof);
+        Namespace::parse(&mut cursor, reporter, subdir)
+            .await
+    }
+    
 }
 
 #[derive(Debug, Clone)]
@@ -68,84 +81,67 @@ impl Namespace {
         }
     }
 
-    async fn parse<'a>(cursor: &mut Cursor<'a>, subdir: PathBuf) -> Result<Namespace, ()> {
+    async fn parse<'a>(cursor: &mut Cursor<'a>, reporter: &TerminalReporter<Stdout>, subdir: PathBuf) -> Result<Namespace, ()> {
         let mut namespace = Namespace::new(subdir.clone());
         let mut visibility = Visibility::Private;
 
         while let Some(tok) = cursor.peek() {
             match tok.inner() {
-                Token::Keyword(Keyword::Fn) => match cursor.parse() {
+                Token::Keyword(Keyword::Fn) => match cursor.parse(reporter).await {
                     Ok(func) => {
                         namespace.functions.push((func, visibility));
                         visibility = Visibility::Private;
                     }
-                    Err(err) => {
-                        cursor.reporter().report(err).await;
-                        continue;
-                    }
+                    Err(_) => continue,
                 },
                 Token::Keyword(Keyword::Import) => {
                     if visibility != Visibility::Private {
-                        cursor
-                            .reporter()
-                            .report(spanned_error!(tok.span().clone(), "imports cannot "))
+                        reporter
+                            .report(error!(tok.span().clone(), "imports cannot "))
                             .await;
                     }
                     cursor.step();
 
-                    match cursor.parse() {
+                    match cursor.parse(reporter).await {
                         Ok(path) => namespace.imports.push(path),
-                        Err(err) => {
-                            cursor.reporter().report(err).await;
-                            cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
-                        }
+                        Err(_) => cursor.seek(&Token::Punctuation(Punctuation::Semicolon)),
                     }
 
-                    cursor.expect_semicolon();
+                    cursor.expect_semicolon(reporter).await;
                     visibility = Visibility::Private;
                 }
                 Token::Keyword(Keyword::Const) => {
-                    match cursor.parse() {
+                    match cursor.parse(reporter).await {
                         Ok(var) => namespace.constants.push((var, visibility)),
-                        Err(err) => {
-                            cursor.reporter().report(err).await;
-                            cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
-                        }
+                        Err(_) => cursor.seek(&Token::Punctuation(Punctuation::Semicolon))
                     }
 
-                    cursor.expect_semicolon();
+                    cursor.expect_semicolon(reporter).await;
                     visibility = Visibility::Private;
                 }
                 Token::Keyword(Keyword::Static) => {
-                    match cursor.parse() {
+                    match cursor.parse(reporter).await {
                         Ok(var) => namespace.statics.push((var, visibility)),
-                        Err(err) => {
-                            cursor.reporter().report(err).await;
-                            cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
-                        }
+                        Err(err) => cursor.seek(&Token::Punctuation(Punctuation::Semicolon))
                     }
 
-                    cursor.expect_semicolon();
+                    cursor.expect_semicolon(reporter).await;
                     visibility = Visibility::Private;
                 }
                 Token::Keyword(Keyword::Progmem) => {
-                    match cursor.parse() {
+                    match cursor.parse(reporter).await {
                         Ok(var) => namespace.progmem.push((var, visibility)),
-                        Err(err) => {
-                            cursor.reporter().report(err).await;
-                            cursor.seek(&Token::Punctuation(Punctuation::Semicolon));
-                        }
+                        Err(_) => cursor.seek(&Token::Punctuation(Punctuation::Semicolon))
                     }
 
-                    cursor.expect_semicolon();
+                    cursor.expect_semicolon(reporter).await;
                     visibility = Visibility::Private;
                 }
                 Token::Keyword(Keyword::Prot) => {
                     match visibility {
                         Visibility::Public | Visibility::Protected => {
-                            cursor
-                                .reporter()
-                                .report(spanned_error!(
+                            reporter
+                                .report(error!(
                                     tok.span().clone(),
                                     "duplicate visibility modifier"
                                 ))
@@ -159,9 +155,8 @@ impl Namespace {
                 Token::Keyword(Keyword::Pub) => {
                     match visibility {
                         Visibility::Public | Visibility::Protected => {
-                            cursor
-                                .reporter()
-                                .report(spanned_error!(
+                            reporter
+                                .report(error!(
                                     tok.span().clone(),
                                     "duplicate visibility modifier"
                                 ))
@@ -174,10 +169,9 @@ impl Namespace {
                 }
                 Token::Keyword(Keyword::Subspace) => {
                     cursor.step();
-                    let ident = match cursor.parse::<Spanned<Ident>>() {
+                    let ident: Spanned<Ident> = match cursor.parse(reporter).await {
                         Ok(ident) => ident,
-                        Err(err) => {
-                            cursor.reporter().report(err).await;
+                        Err(_) => {
                             seek!(
                                 cursor,
                                 Token::Punctuation(Punctuation::Semicolon)
@@ -188,12 +182,10 @@ impl Namespace {
                         }
                     };
 
-                    match cursor.peek() {
-                        Some(Spanned {
-                            inner: Token::Delimeter(Delimeter::OpenBrace),
-                            span,
-                        }) => {
-                            let start_span = span.clone();
+                    let peek = cursor.peek();
+                    match peek.map(Spanned::inner) {
+                        Some(Token::Delimeter(Delimeter::OpenBrace)) => {
+                            let start_span = peek.unwrap().span();
                             let mut depth = 0;
                             let start = cursor.position + 1;
 
@@ -212,6 +204,7 @@ impl Namespace {
 
                                             if let Ok(subspace) = Box::pin(Namespace::parse(
                                                 &mut space_cursor,
+                                                reporter,
                                                 space_subdir,
                                             ))
                                             .await
@@ -236,7 +229,7 @@ impl Namespace {
                             }
                         }
                         _ => {
-                            cursor.expect_semicolon();
+                            cursor.expect_semicolon(reporter).await;
 
                             let subspace_path = subdir
                                 .join(cursor.symbol_table.get(ident.inner().symbol).await)
@@ -245,10 +238,9 @@ impl Namespace {
                             let subspace_file = match File::open(&subspace_path).await {
                                 Ok(file) => file,
                                 Err(err) => {
-                                    cursor
-                                        .reporter()
-                                        .report(spanned_error!(
-                                            ident.into_span(),
+                                    reporter
+                                        .report(error!(
+                                            ident,
                                             "unable to open file `{file_name}`: {err}"
                                         ))
                                         .await;
@@ -257,30 +249,25 @@ impl Namespace {
                             };
 
                             let lexed =
-                                match lex(cursor.symbol_table.clone(), file_name, subspace_file)
+                                match lex(cursor.symbol_table.clone(), file_name, subspace_file, reporter)
                                     .await
                                 {
                                     Ok(lexed) => lexed,
-                                    Err(errors) => {
-                                        cursor.reporter().report_all(errors).await;
-                                        continue;
-                                    }
+                                    Err(_) => continue
                                 };
 
                             let subspace_dir = subspace_path.with_extension("");
                             let mut cursor = Cursor::new(
                                 &lexed.stream,
-                                lexed.source,
-                                lexed.lookup,
                                 &lexed.symbol_table,
-                                cursor.reporter().clone(),
+                                reporter.eof_span(lexed.lookup).await
                             );
+
                             if let Ok(subspace) =
-                                Box::pin(Namespace::parse(&mut cursor, subspace_dir)).await
+                                Box::pin(Namespace::parse(&mut cursor, reporter, subspace_dir)).await
                             {
-                                let eof = cursor.eof_span();
-                                let end = eof.end();
-                                let span = eof.with_location(0..end);
+                                let eof = cursor.eof();
+                                let span = Span::new(eof.lookup(), 0..eof.end());
 
                                 namespace.subspaces.push((
                                     ident,
@@ -294,9 +281,8 @@ impl Namespace {
                 }
                 Token::CompInfo(info) => {
                     if matches!(visibility, Visibility::Public | Visibility::Protected) {
-                        cursor
-                            .reporter()
-                            .report(spanned_error!(
+                        reporter
+                            .report(error!(
                                 tok.span().clone(),
                                 "compiler info cannot contain visibility modifiers"
                             ))
@@ -307,10 +293,10 @@ impl Namespace {
 
                     match CompInfo::parse(
                         Spanned::new(info.clone(), tok.span().clone()),
-                        cursor.reporter(),
-                    ) {
+                        reporter,
+                    ).await {
                         CompInfo::Lib(lib) => {
-                            match locate_library(lib.src, cursor.reporter()).await {
+                            match locate_library(lib.src, reporter).await {
                                 Ok(path) => namespace.lib_imports.push((
                                     Spanned::new(
                                         Ident {
@@ -331,10 +317,9 @@ impl Namespace {
                     cursor.step()
                 }
                 _ => {
-                    cursor
-                        .reporter()
+                    reporter
                         .report(
-                            spanned_error!(
+                            error!(
                                 tok.span().clone(),
                                 "unexpected token {}",
                                 tok.description()
@@ -347,7 +332,7 @@ impl Namespace {
             }
         }
 
-        if cursor.reporter().has_errors() {
+        if reporter.has_errors().await {
             Err(())
         } else {
             Ok(namespace)
@@ -378,37 +363,29 @@ impl Display for Visibility {
 
 pub struct Cursor<'a> {
     stream: &'a [Spanned<Token>],
-    pub position: usize,
-    eof_span: Span,
-    reporter: Reporter,
     symbol_table: &'a SymbolTable,
+    pub position: usize,
+    eof: Span,
 }
 
 impl<'a> Cursor<'a> {
     #[inline]
     pub fn new(
         stream: &'a [Spanned<Token>],
-        source_name: Arc<String>,
-        lookup: Arc<Lookup>,
         symbol_table: &'a SymbolTable,
-        reporter: Reporter,
+        eof: Span,
     ) -> Self {
-        let end_position = stream
-            .last()
-            .map(|last| last.span().end()..(last.span().end() + 1))
-            .unwrap_or(0..1);
         Self {
             stream,
-            position: 0,
-            eof_span: Span::new(source_name, lookup, end_position),
             symbol_table,
-            reporter,
+            position: 0,
+            eof,
         }
     }
 
     #[inline]
-    pub fn parse<T: Parsable>(&mut self) -> Result<T, Diagnostic> {
-        T::parse(self)
+    pub async fn parse<T: Parsable>(&mut self, reporter: &TerminalReporter<Stdout>) -> Result<T, ()> {
+        T::parse(self, reporter).await
     }
 
     #[inline]
@@ -472,38 +449,25 @@ impl<'a> Cursor<'a> {
     pub fn slice<R: Into<Range<usize>>>(&mut self, range: R) -> Cursor {
         Cursor::new(
             &self.stream[range.into()],
-            self.eof_span.source_name(),
-            self.eof_span.lookup(),
             self.symbol_table,
-            self.reporter.clone(),
+            self.eof,
         )
     }
 
     #[inline]
-    pub fn eof_span(&self) -> Span {
-        self.eof_span.clone()
+    pub fn eof(&self) -> Span {
+        self.eof
     }
 
-    #[inline]
-    pub fn reporter<'r>(&'r self) -> &'r Reporter {
-        &self.reporter
-    }
-
-    #[inline]
-    pub fn take_reporter(&self) -> Reporter {
-        self.reporter.clone()
-    }
-
-    pub fn expect_semicolon(&mut self) {
+    pub async fn expect_semicolon(&mut self, reporter: &TerminalReporter<Stdout>) {
         if self.check(&Token::Punctuation(Punctuation::Semicolon)) {
             self.step();
         } else {
             let next_span = match self.peek() {
-                Some(tok) => tok.span().clone(),
-                None => self.eof_span(),
+                Some(tok) => tok.span(),
+                None => self.eof,
             };
-            self.reporter
-                .report_sync(spanned_error!(next_span, "expected `;`"));
+            reporter.report(error!(next_span, "expected `;`")).await;
         }
     }
 }
@@ -518,21 +482,9 @@ impl<'a> Iterator for Cursor<'a> {
     }
 }
 
-#[macro_export]
-macro_rules! seek {
-    ($cursor:expr, $token:pat) => {
-        while !$cursor.at_end() {
-            if matches!($cursor.peek().map(Spanned::inner), Some($token)) {
-                break;
-            }
-            $cursor.position += 1;
-        }
-    };
-}
-
 pub trait Parsable: Sized {
     /// Parses the item from a stream of raw tokens.
-    fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic>;
+    async fn parse(cursor: &mut Cursor, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()>;
     /// Static description of the item.
     /// Used for error messages.
     fn description(&self) -> &'static str;
@@ -604,17 +556,17 @@ impl<T: 'static, S: 'static> Punctuated<T, S> {
 }
 
 impl<T: Parsable, S: Parsable> Parsable for Punctuated<T, S> {
-    fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+    async fn parse(cursor: &mut Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()> {
         let mut inner = Vec::new();
         let mut last = None;
 
         while !cursor.at_end() {
-            let next = cursor.parse()?;
+            let next = cursor.parse(reporter).await?;
             if cursor.at_end() {
                 last = Some(next);
                 break;
             }
-            let sep = cursor.parse()?;
+            let sep = cursor.parse(reporter).await?;
 
             inner.push((next, sep));
         }
@@ -638,9 +590,9 @@ macro_rules! punctuated {
 
         while let Some(tok) = $cursor.peek() {
             match tok.inner() {
-                $content => last = Some($cursor.parse()?),
+                $content => last = Some($cursor.parse().await?),
                 $seperator => match last.take() {
-                    Some(l) => inner.push((l, $cursor.parse()?)),
+                    Some(l) => inner.push((l, $cursor.parse().await?)),
                     None => {
                         return Err($crate::spanned_error!(
                             tok.span().clone(),
@@ -663,13 +615,13 @@ macro_rules! punctuated {
             match tok.inner() {
                 $end => break,
                 $seperator => match last.take() {
-                    Some(l) => inner.push((l, $cursor.parse()?)),
+                    Some(l) => inner.push((l, $cursor.parse().await?)),
                     None => {
                         err = Some(tok.span().clone());
                         break;
                     }
                 },
-                _ => last = Some($cursor.parse()?),
+                _ => last = Some($cursor.parse().await?),
             }
         }
 
@@ -712,8 +664,8 @@ macro_rules! delimeterized {
         }
 
         impl<T: Parsable> Parsable for Spanned<$struct<T>> {
-            fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
-                let open: Spanned<$open> = cursor.parse()?;
+            async fn parse(cursor: &mut Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()> {
+                let open: Spanned<$open> = cursor.parse(reporter).await?;
 
                 let mut depth = 0;
                 let start = cursor.position;
@@ -724,12 +676,12 @@ macro_rules! delimeterized {
                         $open_inner => depth += 1,
                         $close_inner => {
                             if depth == 0 {
-                                let close: Spanned<$close> = cursor.parse()?;
+                                let close: Spanned<$close> = cursor.parse(reporter).await?;
                                 let span = open.span().to(close.span());
                                 return Ok(Spanned::new(
                                     $struct {
                                         open: open.into_inner(),
-                                        inner: T::parse(&mut cursor.slice(start..i))?,
+                                        inner: T::parse(&mut cursor.slice(start..i), reporter).await?,
                                         close: close.into_inner(),
                                     },
                                     span,
@@ -742,10 +694,12 @@ macro_rules! delimeterized {
                     }
                 }
 
-                Err(spanned_error!(
-                    open.into_span(),
-                    concat!("unmatched opening ", $name)
-                ))
+                reporter.report(error!(
+                    open,
+                    "unmatched opening {}",
+                    $name
+                )).await;
+                Err(())
             }
 
             fn description(&self) -> &'static str {
@@ -754,8 +708,8 @@ macro_rules! delimeterized {
         }
 
         impl<T: Parsable> Parsable for $struct<T> {
-            fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
-                let open: Spanned<$open> = cursor.parse()?;
+            async fn parse(cursor: &mut Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()> {
+                let open: Spanned<$open> = cursor.parse(reporter).await?;
 
                 let mut depth = 0;
                 let start = cursor.position;
@@ -766,10 +720,10 @@ macro_rules! delimeterized {
                         $open_inner => depth += 1,
                         $close_inner => {
                             if depth == 0 {
-                                let close: Spanned<$close> = cursor.parse()?;
+                                let close: Spanned<$close> = cursor.parse(reporter).await?;
                                 return Ok($struct {
                                     open: open.into_inner(),
-                                    inner: T::parse(&mut cursor.slice(start..(start + i)))?,
+                                    inner: T::parse(&mut cursor.slice(start..(start + i)), reporter).await?,
                                     close: close.into_inner(),
                                 });
                             }
@@ -780,10 +734,12 @@ macro_rules! delimeterized {
                     }
                 }
 
-                Err(spanned_error!(
-                    open.into_span(),
-                    concat!("unmatched opening ", $name)
-                ))
+                reporter.report(error!(
+                    open,
+                    "unmatched opening {}",
+                    $name,
+                )).await;
+                Err(())
             }
 
             fn description(&self) -> &'static str {
@@ -791,8 +747,8 @@ macro_rules! delimeterized {
             }
         }
 
-        pub fn $fn<'a>(cursor: &'a mut Cursor) -> Result<$struct<Cursor<'a>>, Diagnostic> {
-            let open: Spanned<$open> = cursor.parse()?;
+        pub async fn $fn<'a>(cursor: &'a mut Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<$struct<Cursor<'a>>, ()> {
+            let open: Spanned<$open> = cursor.parse(reporter).await?;
             let start = cursor.position;
             let mut depth = 0;
 
@@ -801,7 +757,7 @@ macro_rules! delimeterized {
                     Some($open_inner) => depth += 1,
                     Some($close_inner) => {
                         if depth == 0 {
-                            let close: Spanned<$close> = cursor.parse()?;
+                            let close: Spanned<$close> = cursor.parse(reporter).await?;
                             return Ok($struct {
                                 open: open.into_inner(),
                                 inner: cursor.slice(start..cursor.position),
@@ -815,10 +771,12 @@ macro_rules! delimeterized {
                 cursor.position += 1;
             }
 
-            Err(spanned_error!(
-                open.into_span(),
-                concat!("unmatched opening ", $error)
-            ))
+            reporter.report(error!(
+                open,
+                "unmatched opening {}", 
+                $error
+            )).await;
+            Err(())
         }
     };
 }

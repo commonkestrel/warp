@@ -1,7 +1,10 @@
+use std::io::Stdout;
 use std::{collections::HashMap, ops::Index, sync::Arc};
 
-use async_std::path::PathBuf;
+use std::path::PathBuf;
 use slotmap::{new_key_type, SlotMap};
+use nurse::prelude::*;
+use smol::unblock;
 
 use crate::{
     build::{
@@ -17,9 +20,6 @@ use crate::{
             token::Ident,
         },
     },
-    diagnostic::{Diagnostic, Reporter},
-    span::{Span, Spanned},
-    spanned_error,
 };
 
 use super::lib::resolve_lib;
@@ -39,17 +39,17 @@ impl UnresolvedDb {
         symbol_table: SymbolTable,
         libraries: &mut HashMap<PathBuf, ItemId>,
         items: &mut SlotMap<ItemId, Item>,
-        reporter: Reporter,
+        reporter: &TerminalReporter<Stdout>,
     ) -> UnresolvedDb {
         let mut db = UnresolvedDb::default();
 
         for (ident, path) in src.lib_imports {
-            let lib_path = match path.canonicalize().await {
+            let lib_path = match unblock(move || path.canonicalize()).await {
                 Ok(path) => path,
                 Err(err) => {
                     reporter
-                        .report(spanned_error!(
-                            ident.into_span(),
+                        .report(error!(
+                            ident.span(),
                             "unable to canonicalize path: {err}"
                         ))
                         .await;
@@ -121,7 +121,7 @@ impl UnresolvedDb {
                 .is_some()
             {
                 reporter
-                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .report(error!(ident_span, "duplicate identifier"))
                     .await;
             }
         }
@@ -148,7 +148,7 @@ impl UnresolvedDb {
                 .insert(ident, Visible::new(ident_span.clone(), vis, id))
             {
                 reporter
-                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .report(error!(ident_span, "duplicate identifier"))
                     .await;
             }
         }
@@ -174,7 +174,7 @@ impl UnresolvedDb {
                 .insert(ident, Visible::new(ident_span.clone(), vis, id))
             {
                 reporter
-                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .report(error!(ident_span, "duplicate identifier"))
                     .await;
             }
         }
@@ -200,7 +200,7 @@ impl UnresolvedDb {
                 .insert(ident, Visible::new(ident_span.clone(), vis, id))
             {
                 reporter
-                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .report(error!(ident_span, "duplicate identifier"))
                     .await;
             }
         }
@@ -214,17 +214,17 @@ impl UnresolvedDb {
                 symbol_table.clone(),
                 libraries,
                 items,
-                reporter.clone(),
+                reporter,
             ))
             .await;
             let item = Item::Subspace(subspace_db);
             let id = items.insert(item);
             if let Some(_) = db
                 .items
-                .insert(ident, Visible::new(ident_span.clone(), vis, id))
+                .insert(ident, Visible::new(ident_span, vis, id))
             {
                 reporter
-                    .report(spanned_error!(ident_span, "duplicate identifier"))
+                    .report(error!(ident_span, "duplicate identifier"))
                     .await;
             }
         }
@@ -235,8 +235,8 @@ impl UnresolvedDb {
     pub fn get(&self, index: &Spanned<Ident>) -> Result<Visible<ItemId>, Diagnostic> {
         match self.items.get(index.inner()) {
             Some(item) => Ok(item.clone()),
-            None => Err(spanned_error!(
-                index.span().clone(),
+            None => Err(error!(
+                index.span(),
                 "item does not exist in subspace or package"
             )),
         }
@@ -251,7 +251,7 @@ pub async fn resolve_path(
     superspace: Option<ItemId>,
     items: &SlotMap<ItemId, Item>,
     libs: &HashMap<PathBuf, ItemId>,
-    reporter: &Reporter,
+    reporter: &TerminalReporter<Stdout>,
 ) -> Option<ItemId> {
     let (start, mut base_span) = path.start().clone().deconstruct();
     let (mut item, same_package) = match start {
@@ -260,7 +260,7 @@ pub async fn resolve_path(
             Some(sup) => (sup, true),
             None => {
                 reporter
-                    .report(spanned_error!(
+                    .report(error!(
                         base_span,
                         "already at project root; no superspace available"
                     ))
@@ -289,7 +289,8 @@ pub async fn resolve_path(
             Some(base) => base,
             None => {
                 reporter
-                    .report(spanned_error!(base_span, "no item found for referenced base").as_bug())
+                    // bug
+                    .report(error!(base_span, "no item found for referenced base"))
                     .await;
                 return None;
             }
@@ -333,17 +334,17 @@ pub fn get_local(
             let lib = match libs.get(item.inner()) {
                 Some(lib) => lib,
                 None => {
-                    return Err(spanned_error!(
-                        index.span().clone(),
+                    // bug
+                    return Err(error!(
+                        index.span(),
                         "library is not present in item map"
-                    )
-                    .as_bug())
+                    ))
                 }
             };
-            Ok((Spanned::new(*lib, item.span().clone()), false))
+            Ok((Spanned::new(*lib, item.span()), false))
         }
-        None => Err(spanned_error!(
-            index.span().clone(),
+        None => Err(error!(
+            index.span(),
             "item does not exist in subspace or package"
         )),
     }
@@ -404,8 +405,8 @@ impl Item {
                     if visible {
                         Ok(item.into_inner())
                     } else {
-                        Err(spanned_error!(
-                            idx.span().clone(),
+                        Err(error!(
+                            idx.span(),
                             "item is not visible to current space"
                         )
                         .with_note(format!("item is of {} visibility", item.visibility())))
@@ -413,8 +414,8 @@ impl Item {
                 }
                 Err(err) => Err(err),
             },
-            _ => Err(spanned_error!(
-                parent.clone(),
+            _ => Err(error!(
+                parent,
                 "{} is not a package or subspace",
                 self.description()
             )),

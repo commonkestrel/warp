@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use async_std::sync::RwLock;
+use smol::lock::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct SymbolTable {

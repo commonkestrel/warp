@@ -116,6 +116,15 @@ pub enum UnescapeError {
     InvalidAscii,
 }
 
+impl Into<String> for UnescapeError {
+    fn into(self) -> String {
+        match self {
+            Self::UnmatchedBackslash(i) => format!("unmatched backslash at index {i}"),
+            Self::InvalidAscii => "invalid ASCII".to_owned(),
+        }
+    }
+}
+
 pub fn unescape_str<'a>(s: &'a str) -> Result<AsciiStr, UnescapeError> {
     let mut numbered = regex_replace_all!(r"\\x[0-9a-fA-F]{2}", s, |cap: &str| {
         let byte = u8::from_str_radix(cap.strip_prefix("\\x").unwrap(), 16).unwrap();
@@ -148,7 +157,7 @@ pub fn unescape_str<'a>(s: &'a str) -> Result<AsciiStr, UnescapeError> {
         .replace("\\v", "\x0B");
 
     let mut string =
-        encode_string_checked(simple, &ENCODING_TABLE_CP737).ok_or(UnescapeError::InvalidAscii)?;
+        encode_string_checked(&simple, &ENCODING_TABLE_CP737).ok_or(UnescapeError::InvalidAscii)?;
     string.push(0x00);
 
     Ok(AsciiStr::new(string))

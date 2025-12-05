@@ -1,9 +1,9 @@
-use std::{collections::HashMap, env, path::PathBuf, process::ExitCode};
+use std::{collections::HashMap, env, io::stdout, path::PathBuf, process::ExitCode};
 
-use async_std::{fs::File, io::WriteExt};
 use clio::{Input, Output};
 use frontend::hir::{weak::unresolved::UnresolvedDb, Database};
 use slotmap::SlotMap;
+use smol::{fs::File, io::AsyncWriteExt, Unblock};
 use symbol_table::SymbolTable;
 use syntax::{
     ast::Function,
@@ -12,7 +12,7 @@ use syntax::{
     parse::{parse, Cursor},
 };
 
-use crate::{diagnostic::Reporter, error, span::Spanned};
+use nurse::prelude::*;
 
 mod frontend {
     pub mod hir;
@@ -34,25 +34,34 @@ mod lib {
 mod ascii;
 mod symbol_table;
 
-pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
+pub async fn build(input: PathBuf, output: PathBuf, verbose: bool) -> ExitCode {
+    let filter = if verbose {
+        LevelFilter::Debug
+    } else {
+        LevelFilter::Warn
+    };
+
+    let mut reporter = TerminalReporter::filtered(stdout(), filter);
+
     let file_name = input.to_string_lossy().replace('\\', "/");
     let file = match File::open(&input).await {
         Ok(file) => file,
         Err(err) => {
-            error!("unable to open input file: {}", err).emit().await;
+            let _ = reporter
+                .emit(error!("unable to open input file: {}", err))
+                .await;
             return ExitCode::FAILURE;
         }
     };
 
-    let symbol_table = SymbolTable::default();
-    let lexed = match syntax::lex::lex(symbol_table, file_name, file).await {
-        Ok(lexed) => lexed,
-        Err(errors) => {
-            for err in errors {
-                err.emit().await;
-            }
+    reporter.report(debug!("loaded input file")).await;
 
-            return ExitCode::FAILURE;
+    let symbol_table = SymbolTable::default();
+    let lexed = match syntax::lex::lex(symbol_table, file_name, file, &reporter).await {
+        Ok(lexed) => lexed,
+        Err(_) => {
+            let _ = reporter.emit_all().await;
+            return ExitCode::FAILURE;   
         }
     };
 
@@ -62,8 +71,8 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
                 match env::current_dir() {
                     Ok(cwd) => cwd,
                     Err(err) => {
-                        error!("unable to get the current working directory: {err}")
-                            .emit()
+                        let _ = reporter
+                            .emit(error!("unable to get the current working directory: {err}"))
                             .await;
                         return ExitCode::FAILURE;
                     }
@@ -75,28 +84,25 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
         None => match env::current_dir() {
             Ok(cwd) => cwd,
             Err(err) => {
-                error!("unable to get the current working directory: {err}")
-                    .emit()
+                let _ = reporter
+                    .emit(error!("unable to get the current working directory: {err}"))
                     .await;
                 return ExitCode::FAILURE;
             }
         },
     };
 
-    let reporter = Reporter::new();
     let namespace = match parse(
         &lexed.stream,
-        lexed.source,
-        lexed.lookup,
-        reporter.clone(),
+        &reporter,
         &lexed.symbol_table,
-        root_dir.into(),
+        root_dir
     )
     .await
     {
         Ok(namespace) => namespace,
-        Err(reporter) => {
-            reporter.emit_all().await;
+        Err(_) => {
+            let _ = reporter.emit_all().await;
             return ExitCode::FAILURE;
         }
     };
@@ -108,22 +114,24 @@ pub async fn build(input: PathBuf, output: PathBuf) -> ExitCode {
         lexed.symbol_table,
         &mut libs,
         &mut items,
-        reporter.clone(),
+        &reporter,
     )
     .await;
 
     match File::create(output).await {
-        Ok(mut file) => match write!(file, "{:#?}", db).await {
+        Ok(mut file) => match file.write_all(format!("{:#?}", db).as_bytes()).await {
             Ok(_) => return ExitCode::SUCCESS,
             Err(err) => {
-                error!("unable to write to output file: {}", err)
-                    .emit()
+                let _ = reporter
+                    .emit(error!("unable to write to output file: {}", err))
                     .await;
                 return ExitCode::FAILURE;
             }
         },
         Err(err) => {
-            error!("unable to create output file: {}", err).emit().await;
+            let _ = reporter
+                .emit(error!("unable to create output file: {}", err))
+                .await;
             return ExitCode::FAILURE;
         }
     }

@@ -1,12 +1,7 @@
-use async_std::path::PathBuf;
+use std::{io::Stdout, path::PathBuf};
 use logos::Logos;
 use url::Url;
-
-use crate::{
-    diagnostic::{Diagnostic, Reporter},
-    span::{Span, Spanned},
-    spanned_error,
-};
+use nurse::prelude::*;
 
 #[derive(Debug, Clone)]
 pub enum CompInfo {
@@ -32,7 +27,7 @@ pub enum LibSrc {
 }
 
 #[derive(Logos, Debug, Clone, PartialEq)]
-#[logos(error = Diagnostic)]
+#[logos(error = String)]
 #[logos(skip r"[ \t]")]
 enum InfoToken {
     #[token("lib")]
@@ -69,7 +64,7 @@ impl InfoToken {
 }
 
 impl CompInfo {
-    pub fn parse(source: Spanned<String>, reporter: &Reporter) -> CompInfo {
+    pub async fn parse(source: Spanned<String>, reporter: &TerminalReporter<Stdout>) -> CompInfo {
         let mut tokens = Vec::new();
 
         let src = source.inner().to_string();
@@ -79,73 +74,62 @@ impl CompInfo {
         while let Some(tok) = lex.next() {
             let location = (global_span.start() + lex.span().start + 3)
                 ..(global_span.start() + lex.span().end + 3);
-            let s = global_span.clone().with_location(location);
+            let s = Span::new(global_span.lookup(), location);
 
             match tok {
                 Ok(tok) => {
                     let token = Spanned::new(tok, s);
                     tokens.push(token);
                 }
-                Err(mut err) => {
-                    err.set_span(Some(s));
-                    reporter.report_sync(err);
-                }
+                Err(mut err) => reporter.report(Diagnostic::spanned_error(s, err)).await,
             }
         }
 
-        match tokens.get(0) {
-            Some(Spanned {
-                inner: InfoToken::Lib,
-                ..
-            }) => {
+        match tokens.get(0).map(Spanned::inner) {
+            Some(InfoToken::Lib) => {
                 let eol_location = (global_span.end() - 1)..global_span.end();
-                let eol_span = global_span.clone().with_location(eol_location);
+                let eol_span = Span::new(global_span.lookup(), eol_location);
 
-                match CompInfo::parse_lib(&tokens[1..], eol_span) {
+                match CompInfo::parse_lib(&tokens[1..], eol_span, reporter).await {
                     Ok(lib) => {
-                        let (library, span) = lib.deconstruct();
+                        let library = lib.into_inner();
                         CompInfo::Lib(library)
                     }
-                    Err(err) => {
-                        reporter.report_sync(err);
-                        CompInfo::Err
-                    }
+                    Err(_) => CompInfo::Err
                 }
             }
             Some(tok) => {
-                reporter.report_sync(
-                    spanned_error!(
-                        global_span.clone(),
+                reporter.report(
+                    error!(
+                        global_span,
                         "expected compiler info indicator, found `{}`",
                         tok.description()
                     )
                     .with_note("consider starting compiler info with one of the following: `lib`"),
-                );
+                ).await;
                 return CompInfo::Err;
             }
             None => {
-                reporter.report_sync(spanned_error!(
-                    global_span.clone(),
+                reporter.report(error!(
+                    global_span,
                     "expected compiler info, found `EOL`"
-                ));
+                )).await;
                 return CompInfo::Err;
             }
         }
     }
 
-    fn parse_lib(
+    async fn parse_lib(
         tokens: &[Spanned<InfoToken>],
         eol_span: Span,
-    ) -> Result<Spanned<Lib>, Diagnostic> {
-        let ident = expect_text(&eol_span, tokens.get(0))?;
-        expect_token(&InfoToken::Equal, &eol_span, tokens.get(1))?;
+        reporter: &TerminalReporter<Stdout>
+    ) -> Result<Spanned<Lib>, ()> {
+        let ident = expect_text(&eol_span, tokens.get(0), reporter).await?;
+        expect_token(&InfoToken::Equal, &eol_span, tokens.get(1), reporter).await?;
 
-        match tokens.get(2) {
-            Some(Spanned {
-                inner: InfoToken::Git,
-                span,
-            }) => {
-                expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3))?;
+        match tokens.get(2).map(Spanned::inner) {
+            Some(InfoToken::Git) => {
+                expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3), reporter).await?;
                 let mut url: Option<Spanned<Url>> = None;
                 let mut commit: Option<Spanned<String>> = None;
                 let mut branch: Option<Spanned<String>> = None;
@@ -158,13 +142,14 @@ impl CompInfo {
                     }
 
                     if !comma {
-                        return Err(spanned_error!(tok.span().clone(), "missing seperator")
-                            .with_note("consider adding `,` here"));
+                        reporter.report(error!(tokens[2].span(), "missing seperator")
+                            .with_note("consider adding `,` here")).await;
+                        return Err(());
                     }
 
-                    let field = expect_text(&eol_span, Some(tok))?;
-                    expect_token(&InfoToken::Equal, &eol_span, tokens.get(i + 1))?;
-                    let value = expect_text(&eol_span, tokens.get(i + 2))?;
+                    let field = expect_text(&eol_span, Some(tok), reporter).await?;
+                    expect_token(&InfoToken::Equal, &eol_span, tokens.get(i + 1), reporter).await?;
+                    let value = expect_text(&eol_span, tokens.get(i + 2), reporter).await?;
                     if let Some(InfoToken::Comma) = tokens.get(i + 3).map(Spanned::inner) {
                         comma = true;
                         i += 4;
@@ -175,34 +160,38 @@ impl CompInfo {
 
                     match field.inner().as_str() {
                         "url" => match Url::parse(&value) {
-                            Ok(val) => url = Some(Spanned::new(val, value.into_span())),
+                            Ok(val) => url = Some(Spanned::new(val, value.span())),
                             Err(err) => {
-                                return Err(spanned_error!(value.into_span(), "invalid URL: {err}"))
+                                reporter.report(error!(value.span(), "invalid URL: {err}")).await;
+                                return Err(());
                             }
                         },
                         "commit" => commit = Some(value),
                         "branch" => branch = Some(value),
                         _ => {
                             let (description, span) = field.deconstruct();
-                            return Err(spanned_error!(span, "unknown field {description}"));
+                            reporter.report(error!(span, "unknown field {description}")).await;
+                            return Err(())
                         }
                     }
                 }
 
-                let close = expect_token(&InfoToken::CloseParen, &eol_span, tokens.get(i))?;
+                let close = expect_token(&InfoToken::CloseParen, &eol_span, tokens.get(i), reporter).await?;
+                let span = tokens[2].span();
 
                 let url = match url {
                     Some(u) => u,
                     None => {
-                        return Err(spanned_error!(
-                            span.clone(),
+                        reporter.report(error!(
+                            span,
                             "git sources require a `url` parameter"
-                        ))
+                        )).await;
+                        return Err(())
                     }
                 };
 
-                let info_span = ident.span().to(&close);
-                let src_span = span.to(&close);
+                let info_span = ident.span().to(close);
+                let src_span = span.to(close);
 
                 Ok(Spanned::new(
                     Lib {
@@ -219,15 +208,12 @@ impl CompInfo {
                     info_span,
                 ))
             }
-            Some(Spanned {
-                inner: InfoToken::Path,
-                span,
-            }) => {
-                expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3))?;
-                let (path, span) = expect_text(&eol_span, tokens.get(4))?.deconstruct();
-                expect_token(&InfoToken::CloseParen, &eol_span, tokens.get(5))?;
+            Some(InfoToken::Path) => {
+                expect_token(&InfoToken::OpenParen, &eol_span, tokens.get(3), reporter).await?;
+                let (path, span) = expect_text(&eol_span, tokens.get(4), reporter).await?.deconstruct();
+                expect_token(&InfoToken::CloseParen, &eol_span, tokens.get(5), reporter).await?;
 
-                let info_span = ident.span().to(&span);
+                let info_span = ident.span().to(span);
                 Ok(Spanned::new(
                     Lib {
                         ident,
@@ -236,14 +222,15 @@ impl CompInfo {
                     info_span,
                 ))
             }
-            Some(Spanned {
-                inner: InfoToken::Text(value),
-                span,
-            }) => {
+            Some(InfoToken::Text(value)) => {
+                let span = tokens[2].span();
                 let info_span = ident.span().to(span);
                 let url = match Url::parse(&value) {
                     Ok(url) => url,
-                    Err(err) => return Err(spanned_error!(span.clone(), "invalid URL: {err}")),
+                    Err(err) => {
+                        reporter.report(error!(span.clone(), "invalid URL: {err}")).await;
+                        return Err(());
+                    }
                 };
 
                 Ok(Spanned::new(
@@ -255,69 +242,76 @@ impl CompInfo {
                 ))
             }
             Some(tok) => {
-                return Err(spanned_error!(
-                    tok.span().clone(),
+                reporter.report(error!(
+                    tokens[2].span(),
                     "expected library source, found {}",
                     tok.description()
-                ))
+                )).await;
+                return Err(());
             }
             None => {
-                return Err(spanned_error!(
+                reporter.report(error!(
                     eol_span,
                     "expected library source, found `EOL`"
-                ))
+                )).await;
+                return Err(());
             }
         }
     }
 }
 
-fn expect_token(
+async fn expect_token(
     target: &InfoToken,
     eol_span: &Span,
     tok: Option<&Spanned<InfoToken>>,
-) -> Result<Span, Diagnostic> {
+    reporter: &TerminalReporter<Stdout>,
+) -> Result<Span, ()> {
     match tok {
-        Some(Spanned { inner: tok, span }) => {
-            if tok == target {
-                Ok(span.clone())
+        Some(tok) => {
+            if tok.inner() == target {
+                Ok(tok.span())
             } else {
-                Err(spanned_error!(
-                    span.clone(),
+                reporter.report(error!(
+                    tok.span(),
                     "expected {}, found {}",
                     target.description(),
-                    tok.description()
-                ))
+                    tok.inner().description()
+                )).await;
+                Err(())
             }
         }
-        None => Err(spanned_error!(
-            eol_span.clone(),
-            "expected {}, found `EOL`",
-            target.description()
-        )),
+        None => {
+            reporter.report(error!(
+                eol_span.clone(),
+                "expected {}, found `EOL`",
+                target.description()
+            )).await;
+            Err(())
+        },
     }
 }
 
-fn expect_text(
+async fn expect_text(
     eol_span: &Span,
     tok: Option<&Spanned<InfoToken>>,
-) -> Result<Spanned<String>, Diagnostic> {
-    match tok {
-        Some(Spanned {
-            inner: InfoToken::Text(txt),
-            span,
-        }) => Ok(Spanned::new(txt.clone(), span.clone())),
-        Some(Spanned { inner: tok, span }) => {
-            return Err(spanned_error!(
-                span.clone(),
+    reporter: &TerminalReporter<Stdout>
+) -> Result<Spanned<String>, ()> {
+    match tok.map(Spanned::inner) {
+        Some(InfoToken::Text(txt)) => Ok(Spanned::new(txt.clone(), tok.unwrap().span())),
+        Some(inner) => {
+            reporter.report(error!(
+                tok.unwrap().span(),
                 "expected text, found {}",
-                tok.description()
-            ))
+                inner.description()
+            )).await;
+            return Err(())
         }
         None => {
-            return Err(spanned_error!(
-                eol_span.clone(),
+            reporter.report(error!(
+                eol_span,
                 "expected text, found `EOL`"
-            ))
+            )).await;
+            return Err(())
         }
     }
 }

@@ -1,6 +1,5 @@
 mod build;
-mod diagnostic;
-mod span;
+use smol_macros::main;
 
 use std::{path::PathBuf, process::ExitCode};
 
@@ -10,9 +9,7 @@ use clap::{Parser, Subcommand};
 struct Cli {
     #[command(subcommand)]
     command: Command,
-
-    #[command(flatten)]
-    verbose: clap_verbosity_flag::Verbosity,
+    
 }
 
 #[derive(Debug, Subcommand)]
@@ -21,14 +18,17 @@ enum Command {
         input: PathBuf,
         #[arg(short, long)]
         output: PathBuf,
+        #[arg(short, long, action)]
+        verbose: bool,
     },
 }
 
-#[async_std::main]
-async fn main() -> ExitCode {
-    let cli = Cli::parse();
+main! {
+    async fn main() -> ExitCode {
+        let cli = Cli::parse();
 
-    match cli.command {
-        Command::Build { input, output } => build::build(input, output).await,
+        match cli.command {
+            Command::Build { input, output, verbose } => build::build(input, output, verbose).await,
+        }
     }
 }

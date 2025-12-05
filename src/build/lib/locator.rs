@@ -1,26 +1,29 @@
-use async_std::path::PathBuf;
+use std::{io::Stdout, path::PathBuf};
 use git2::{build::RepoBuilder, Repository};
 use url::Url;
+use smol::unblock;
+use nurse::prelude::*;
 
-use crate::{
-    build::syntax::info::LibSrc,
-    diagnostic::{Diagnostic, Reporter},
-    span::{Span, Spanned},
-    spanned_error,
-};
+use crate::build::syntax::info::LibSrc;
 
-pub async fn locate_library(src: Spanned<LibSrc>, reporter: &Reporter) -> Result<PathBuf, ()> {
+pub async fn locate_library(src: Spanned<LibSrc>, reporter: &TerminalReporter<Stdout>) -> Result<PathBuf, ()> {
     let (source, span) = src.deconstruct();
 
     match source {
         LibSrc::Path(path) => {
-            if !path.exists().await {
+            if let Ok(path) = unblock(move || {
+                if path.exists() {
+                    Ok(path)
+                } else {
+                    Err(())
+                }
+            }).await {
+                Ok(path)
+            } else {
                 reporter
-                    .report(spanned_error!(span, "path does not exist"))
+                    .report(error!(span, "path does not exist"))
                     .await;
                 Err(())
-            } else {
-                Ok(path)
             }
         }
         LibSrc::Simple(url) => {
@@ -55,8 +58,8 @@ async fn clone(
     let host = match url.host_str() {
         Some(host) => host,
         None => {
-            return Err(spanned_error!(
-                url.into_span(),
+            return Err(error!(
+                url.span(),
                 "cannot-be-a-base URLs are not allowed"
             ))
         }
@@ -65,8 +68,8 @@ async fn clone(
     let path_segments = match url.path_segments() {
         Some(segments) => segments,
         None => {
-            return Err(spanned_error!(
-                url.into_span(),
+            return Err(error!(
+                url.span(),
                 "cannot-be-a-base URLs are not allowed"
             ))
         }
@@ -75,7 +78,7 @@ async fn clone(
     let warp_home = match home::home_dir() {
         Some(dir) => dir.join(".warp"),
         None => {
-            return Err(spanned_error!(
+            return Err(error!(
                 span,
                 "failed to fetch home directory while cloning git repository"
             ))
@@ -85,11 +88,15 @@ async fn clone(
     let mut repo_dir: PathBuf = warp_home.join("git").join(host).into();
     repo_dir.extend(path_segments);
 
-    if repo_dir.exists().await {
-        match async_std::fs::remove_dir_all(&repo_dir).await {
+    let (exists, repo_dir) = unblock(move || {
+        (repo_dir.exists(), repo_dir)
+    }).await;
+
+    if exists {
+        match smol::fs::remove_dir_all(&repo_dir).await {
             Ok(_) => {}
             Err(err) => {
-                return Err(spanned_error!(
+                return Err(error!(
                     span,
                     "failed to remove existing cache: {err}"
                 ))
@@ -105,7 +112,7 @@ async fn clone(
     let repo = match builder.clone(&url.as_str(), repo_dir.as_path().into()) {
         Ok(repo) => repo,
         Err(err) => {
-            return Err(spanned_error!(
+            return Err(error!(
                 span,
                 "unable to clone git repository: {err}"
             ))
@@ -116,8 +123,8 @@ async fn clone(
         let commit = match repo.find_commit_by_prefix(&hash) {
             Ok(commit) => commit,
             Err(err) => {
-                return Err(spanned_error!(
-                    hash.into_span(),
+                return Err(error!(
+                    hash.span(),
                     "unable to find commit: {err}"
                 ))
             }
@@ -126,8 +133,8 @@ async fn clone(
         match repo.checkout_tree(commit.as_object(), None) {
             Ok(_) => {}
             Err(err) => {
-                return Err(spanned_error!(
-                    hash.into_span(),
+                return Err(error!(
+                    hash.span(),
                     "failed to checkout to commit: {err}"
                 ))
             }

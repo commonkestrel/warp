@@ -2,9 +2,8 @@ use super::lex::{Delimeter, Keyword, Macro, Punctuation, Token};
 use super::parse::{Cursor, Parsable};
 use crate::build::ascii::AsciiStr;
 use crate::build::symbol_table::SymbolRef;
-use crate::diagnostic::Diagnostic;
-use crate::span::Spanned;
-use crate::{error, spanned_error};
+use nurse::prelude::*;
+use std::io::Stdout;
 
 #[macro_export]
 macro_rules! Token {
@@ -62,12 +61,18 @@ macro_rules! parsable {
             pub struct $name;
 
             impl Parsable for $name {
-                fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+                async fn parse(cursor: &mut Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()> {
                     let next = cursor.next().map(Spanned::deconstruct);
                     match next {
                         Some((Token::$token($inner), _)) => Ok($name),
-                        Some((tok, span)) => Err(spanned_error!(span, concat!("expected ", $description, ", found {}"), tok.description())),
-                        None => Err(spanned_error!(cursor.eof_span(), concat!("expected ", $description, ", found `EOF`")))
+                        Some((tok, span)) => {
+                            reporter.report(error!(span, "expected {}, found {}", $description, tok.description())).await;
+                            Err(())
+                        }
+                        None => {
+                            reporter.report(error!(cursor.eof(), "expected {}, found `EOF`", $description)).await;
+                            Err(())
+                        }
                     }
                 }
 
@@ -77,12 +82,18 @@ macro_rules! parsable {
             }
 
             impl Parsable for Spanned<$name> {
-                fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+                async fn parse(cursor: &mut Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()> {
                     let next = cursor.next().map(Spanned::deconstruct);
                     match next {
                         Some((Token::$token($inner), span)) => Ok(Spanned::new($name, span)),
-                        Some((tok, span)) => Err(spanned_error!(span, concat!("expected ", $description, ", found {}"), tok.description())),
-                        None => Err(spanned_error!(cursor.eof_span(), concat!("expected ", $description, ", found `EOF`")))
+                        Some((tok, span)) => {
+                            reporter.report(error!(span, "expected {}, found {}", $description, tok.description())).await;
+                            Err(())
+                        }
+                        None => {
+                            reporter.report(error!(cursor.eof(), "expected {}, found `EOF`", $description)).await;
+                            Err(())
+                        }
                     }
                 }
 
@@ -92,7 +103,7 @@ macro_rules! parsable {
             }
 
             impl Parsable for Option<$name> {
-                fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+                async fn parse(cursor: &mut Cursor<'_>, _: &TerminalReporter<Stdout>) -> Result<Self, ()> {
                     let next = cursor.next().map(Spanned::into_inner);
                     match next {
                         Some(Token::$token($inner)) => Ok(Some($name)),
@@ -116,12 +127,18 @@ macro_rules! parsable {
             }
 
             impl Parsable for Spanned<$name> {
-                fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+                async fn parse(cursor: &mut Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()> {
                     let next = cursor.next().map(Spanned::deconstruct);
                     match next {
                         Some((Token::$token($inner), span)) => Ok(Spanned::new($name { $($field)* }, span)),
-                        Some((tok, span)) => Err(spanned_error!(span, concat!("expected ", $description, ", found {}"), tok.description())),
-                        None => Err(spanned_error!(cursor.eof_span(), concat!("expected ", $description, ", found `EOF`")))
+                        Some((tok, span)) => {
+                            reporter.report(error!(span, "expected {}, found {}", $description, tok.description())).await;
+                            Err(())
+                        }
+                        None => {
+                            reporter.report(error!(cursor.eof(), "expected {}, found `EOF`", $description)).await;
+                            Err(())
+                        }
                     }
                 }
 
@@ -221,19 +238,25 @@ pub struct Ident {
 }
 
 impl Parsable for Spanned<Ident> {
-    fn parse(cursor: &mut Cursor) -> Result<Self, Diagnostic> {
+    async fn parse(cursor: &mut Cursor<'_>, reporter: &TerminalReporter<Stdout>) -> Result<Self, ()> {
         let next = cursor.next().map(Spanned::deconstruct);
         match next {
             Some((Token::Ident(inner), span)) => Ok(Spanned::new(Ident { symbol: inner }, span)),
-            Some((tok, span)) => Err(spanned_error!(
-                span,
-                "expected identifier, found {}",
-                tok.description()
-            )),
-            None => Err(spanned_error!(
-                cursor.eof_span(),
-                "expected identifier, found `EOF`"
-            )),
+            Some((tok, span)) => {
+                reporter.report(error!(
+                    span,
+                    "expected identifier, found {}",
+                    tok.description()
+                )).await;
+                Err(())
+            },
+            None => {
+                reporter.report(error!(
+                    cursor.eof(),
+                    "expected identifier, found `EOF`",
+                )).await;
+                Err(())
+            }
         }
     }
 

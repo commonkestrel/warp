@@ -1,8 +1,5 @@
-use crate::{
-    build::syntax::{ast::Mutability, parse::Visibility},
-    diagnostic::Diagnostic,
-    span::{Span, Spanned},
-};
+use crate::build::syntax::{ast::Mutability, parse::Visibility};
+use nurse::prelude::*;
 
 pub mod weak {
     pub mod lib;

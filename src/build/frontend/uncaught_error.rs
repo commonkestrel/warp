@@ -1,4 +1,5 @@
-use crate::{build::syntax, diagnostic::Diagnostic, span::Spanned, spanned_error};
+use crate::build::syntax;
+use nurse::prelude::*;
 
 use super::hir;
 
@@ -17,7 +18,7 @@ impl UncaughtUnwrap for Spanned<syntax::ast::Type> {
         let (ty, span) = self.deconstruct();
 
         match ty {
-            ST::Err => Err(spanned_error!(span, "uncaught STpe error").as_bug()),
+            ST::Err => Err(error!(span, "uncaught STpe error")),
             ST::Void => Ok(Spanned::new(IT::Void, span)),
             ST::Bool => Ok(Spanned::new(IT::Bool, span)),
             ST::U8 => Ok(Spanned::new(IT::U8, span)),
